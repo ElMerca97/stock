@@ -95,7 +95,7 @@ create table if not exists public.customers (
 -- ---------- SHIPMENTS ----------
 create table if not exists public.shipments (
   id bigserial primary key,
-  cliente_id bigint not null references public.customers(id) on delete restrict,
+  cliente_id bigint references public.customers(id) on delete restrict,
   estado text not null default 'pendiente'
     check (estado in ('pendiente','preparando','listo','enviado','entregado','cancelado')),
   total numeric(14,2) not null default 0,
@@ -109,6 +109,8 @@ create table if not exists public.shipments (
   fecha_envio timestamptz,
   fecha_entrega timestamptz
 );
+
+alter table public.shipments alter column cliente_id drop not null;
 
 create table if not exists public.shipment_items (
   id bigserial primary key,

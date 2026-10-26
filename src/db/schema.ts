@@ -102,7 +102,6 @@ export const shipments = pgTable(
   {
     id: serial("id").primaryKey(),
     clienteId: integer("cliente_id")
-      .notNull()
       .references(() => customers.id, { onDelete: "restrict" }),
     estado: text("estado").notNull().default("pendiente"),
     total: numeric("total", { precision: 14, scale: 2 }).notNull().default("0"),

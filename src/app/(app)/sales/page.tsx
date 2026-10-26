@@ -131,10 +131,6 @@ export default function SalesPage() {
       setCheckoutError("Agregá al menos un producto para confirmar la venta.");
       return;
     }
-    if (!customerId) {
-      setCheckoutError("Seleccioná un cliente registrado para continuar.");
-      return;
-    }
     if (!canMove) {
       setCheckoutError("No tenés permiso para registrar movimientos de stock.");
       return;
@@ -144,14 +140,14 @@ export default function SalesPage() {
   }
 
   async function confirmSale() {
-    if (submittingRef.current || !cart.length || !customerId) return;
+    if (submittingRef.current || !cart.length) return;
     submittingRef.current = true;
     setSubmitting(true);
     setCheckoutError(null);
     idempotencyKey.current ??= crypto.randomUUID();
     try {
       const result = await createSale({
-        clienteId: Number(customerId),
+        clienteId: customerId ? Number(customerId) : null,
         idempotencyKey: idempotencyKey.current,
         items: cart.map(({ productoId, cantidad }) => ({ productoId, cantidad })),
       });
@@ -394,30 +390,27 @@ export default function SalesPage() {
                 <UserRound className="h-4 w-4 text-slate-500" />
                 Datos de la venta
               </div>
+              <Select
+                aria-label="Cliente (opcional)"
+                value={customerId}
+                onChange={(event) => setCustomerId(event.target.value)}
+                placeholder="Consumidor final (sin cliente)"
+                options={customers.map((customer) => ({
+                  value: customer.id,
+                  label: `${customer.nombre} ${customer.apellido}${customer.empresa ? ` · ${customer.empresa}` : ""}`,
+                }))}
+              />
               {customersRequest.loading ? (
-                <Loading label="Cargando clientes..." />
+                <p className="text-xs text-slate-500">Cargando clientes disponibles...</p>
               ) : customersRequest.error ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-red-600 dark:text-red-400">{customersRequest.error}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <p className="text-amber-700 dark:text-amber-300">No se pudieron cargar clientes; podés continuar como consumidor final.</p>
                   <Button type="button" size="sm" variant="secondary" onClick={() => void customersRequest.reload()}>
                     Reintentar
                   </Button>
                 </div>
-              ) : customers.length === 0 ? (
-                <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  No hay clientes registrados. El modelo de ventas requiere seleccionar un cliente.
-                </p>
               ) : (
-                <Select
-                  aria-label="Cliente"
-                  value={customerId}
-                  onChange={(event) => setCustomerId(event.target.value)}
-                  placeholder="Seleccionar cliente..."
-                  options={customers.map((customer) => ({
-                    value: customer.id,
-                    label: `${customer.nombre} ${customer.apellido}${customer.empresa ? ` · ${customer.empresa}` : ""}`,
-                  }))}
-                />
+                <p className="text-xs text-slate-500">Opcional. Si no seleccionás uno, se registrará como consumidor final.</p>
               )}
               {selectedCustomer && (
                 <p className="text-xs text-slate-500">
@@ -457,7 +450,7 @@ export default function SalesPage() {
             <Button
               type="button"
               className="h-12 w-full text-base"
-              disabled={!cart.length || cartTotalCents > MAX_TOTAL_CENTS || !customerId || !canMove || customersRequest.loading || Boolean(customersRequest.error)}
+              disabled={!cart.length || cartTotalCents > MAX_TOTAL_CENTS || !canMove}
               onClick={openReview}
               icon={<CheckCircle2 className="h-5 w-5" />}
             >
@@ -523,7 +516,9 @@ export default function SalesPage() {
           <div className="space-y-4">
             <div className="rounded-xl bg-brand-50 p-4 dark:bg-brand-900/20">
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                Cliente: <span className="font-semibold text-slate-900 dark:text-slate-100">{selectedCustomer?.nombre} {selectedCustomer?.apellido}</span>
+                Cliente: <span className="font-semibold text-slate-900 dark:text-slate-100">
+                  {selectedCustomer ? `${selectedCustomer.nombre} ${selectedCustomer.apellido}` : "Consumidor final"}
+                </span>
               </p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Unidades: {cartQuantity}</p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Total a registrar</p>

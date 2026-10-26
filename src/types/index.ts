@@ -117,7 +117,7 @@ export interface ShipmentItemDTO {
 
 export interface ShipmentDTO {
   id: number;
-  clienteId: number;
+  clienteId: number | null;
   clienteNombre: string;
   clienteEmpresa: string;
   estado: ShipmentState;

@@ -31,8 +31,8 @@ export interface ShipmentFilters {
 const base = {
   id: shipments.id,
   clienteId: shipments.clienteId,
-  clienteNombre: sql<string>`${customers.nombre} || ' ' || ${customers.apellido}`,
-  clienteEmpresa: customers.empresa,
+  clienteNombre: sql<string>`coalesce(${customers.nombre} || ' ' || ${customers.apellido}, 'Consumidor final')`,
+  clienteEmpresa: sql<string>`coalesce(${customers.empresa}, '')`,
   estado: shipments.estado,
   total: shipments.total,
   telefono: shipments.telefono,
@@ -92,7 +92,7 @@ export async function listShipments(f: ShipmentFilters = {}): Promise<ActionResu
       db
         .select(base)
         .from(shipments)
-        .innerJoin(customers, eq(shipments.clienteId, customers.id))
+        .leftJoin(customers, eq(shipments.clienteId, customers.id))
         .where(where)
         .orderBy(desc(shipments.createdAt), desc(shipments.id))
         .limit(pageSize)
@@ -100,7 +100,7 @@ export async function listShipments(f: ShipmentFilters = {}): Promise<ActionResu
       db
         .select({ total: sql<number>`count(*)::int` })
         .from(shipments)
-        .innerJoin(customers, eq(shipments.clienteId, customers.id))
+        .leftJoin(customers, eq(shipments.clienteId, customers.id))
         .where(where),
     ]);
     return { ok: true, data: { rows: rows.map(toDTO), total: Number(total), page, pageSize } };
@@ -115,7 +115,7 @@ export async function getShipment(id: number): Promise<ActionResult<ShipmentDTO>
     const [row] = await db
       .select(base)
       .from(shipments)
-      .innerJoin(customers, eq(shipments.clienteId, customers.id))
+      .leftJoin(customers, eq(shipments.clienteId, customers.id))
       .where(eq(shipments.id, id))
       .limit(1);
     if (!row) throw new ValidationError("El envío no existe.");
@@ -245,7 +245,7 @@ export async function createShipment(input: ShipmentInput): Promise<ActionResult
 }
 
 export interface SaleInput {
-  clienteId: number;
+  clienteId?: number | null;
   idempotencyKey: string;
   items: { productoId: number; cantidad: number }[];
 }
@@ -280,7 +280,7 @@ export async function createSale(input: SaleInput): Promise<ActionResult<SaleRec
     const me = await requireUser();
     if (!me.puedeMovimientos) throw new PermissionError("No tenés permiso para registrar movimientos de stock.");
 
-    const clienteId = int(input.clienteId, "Cliente", { min: 1 });
+    const clienteId = input.clienteId == null ? null : int(input.clienteId, "Cliente", { min: 1 });
     const idempotencyKey = str(input.idempotencyKey, "Clave de operación", { required: true, max: 36 }).toLowerCase();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(idempotencyKey))
       throw new ValidationError("La clave de operación no es válida. Volvé a intentar.");
@@ -326,18 +326,20 @@ export async function createSale(input: SaleInput): Promise<ActionResult<SaleRec
         };
       }
 
-      const [customer] = await tx
-        .select({
-          id: customers.id,
-          telefono: customers.telefono,
-          direccion: customers.direccion,
-          ciudad: customers.ciudad,
-        })
-        .from(customers)
-        .where(and(eq(customers.id, clienteId), isNull(customers.deletedAt)))
-        .for("share")
-        .limit(1);
-      if (!customer) throw new ValidationError("El cliente no existe o fue eliminado.");
+      const [customer] = clienteId
+        ? await tx
+            .select({
+              id: customers.id,
+              telefono: customers.telefono,
+              direccion: customers.direccion,
+              ciudad: customers.ciudad,
+            })
+            .from(customers)
+            .where(and(eq(customers.id, clienteId), isNull(customers.deletedAt)))
+            .for("share")
+            .limit(1)
+        : [];
+      if (clienteId && !customer) throw new ValidationError("El cliente no existe o fue eliminado.");
 
       const productIds = canonicalItems.map(([id]) => id);
       const lockedProducts = await tx
@@ -388,10 +390,10 @@ export async function createSale(input: SaleInput): Promise<ActionResult<SaleRec
       const [shipment] = await tx
         .insert(shipments)
         .values({
-          clienteId: customer.id,
-          telefono: customer.telefono,
-          direccion: customer.direccion,
-          ciudad: customer.ciudad,
+          clienteId: customer?.id ?? null,
+          telefono: customer?.telefono ?? "",
+          direccion: customer?.direccion ?? "",
+          ciudad: customer?.ciudad ?? "",
           total,
           createdBy: me.id,
           estado: "preparando",
@@ -427,6 +429,21 @@ export async function createSale(input: SaleInput): Promise<ActionResult<SaleRec
 
     return { ok: true, data: receipt };
   } catch (e) {
+    const hasMissingSaleRequestsTable = (error: unknown, depth = 0): boolean => {
+      if (!(error instanceof Error) || depth > 2) return false;
+      const pgError = error as Error & { code?: string; cause?: unknown };
+      return (
+        (pgError.code === "42P01" && error.message.includes("sale_requests")) ||
+        (error.message.includes("sale_requests") && error.message.includes("does not exist")) ||
+        hasMissingSaleRequestsTable(pgError.cause, depth + 1)
+      );
+    };
+    if (hasMissingSaleRequestsTable(e)) {
+      return {
+        ok: false,
+        error: "Falta aplicar la migración de ventas. Aplicá supabase/20261026_sale_idempotency.sql en la base de datos e intentá nuevamente.",
+      };
+    }
     return { ok: false, error: errorMessage(e) };
   }
 }
