@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useAsync } from "@/hooks/useAsync";
 import { listShipments } from "@/services/shipments/actions";
-import { SHIPMENT_STATES, SHIPMENT_STATE_LABELS } from "@/types";
+import { SHIPMENT_STATES, SHIPMENT_STATE_LABELS, type ShipmentDTO } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select as UISelect } from "@/components/ui/Input";
@@ -17,7 +17,7 @@ import { formatDate, formatMoney, shipmentCode } from "@/utils/format";
 
 const initialFilters = { q: "", estado: "", desde: "", hasta: "", page: 1, pageSize: 15 };
 
-export function OrdersPage() {
+export default function OrdersPage() {
   const params = useSearchParams();
   const [f, setF] = useState({
     q: params.get("q") ?? "",
@@ -29,32 +29,32 @@ export function OrdersPage() {
   });
 
   const onSearch = useCallback((q: string) => setF({ q, estado: f.estado, desde: f.desde, hasta: f.hasta, page: 1, pageSize: f.pageSize }), [f]);
-  const onFilterEstado = useCallback((e: string) => setF({ ...f, estado: e ?? "" }), [f]);
+  const onFilterEstado = useCallback((e: string | React.ChangeEvent<HTMLSelectElement>) => setF({ ...f, estado: typeof e === "string" ? e : (e.target ?? e).value ?? "" }), [f]);
   const onFilterFecha = useCallback((desde: string, hasta: string) => setF({ ...f, desde, hasta, page: 1 }), [f]);
   const onPageChange = useCallback((page: number, pageSize: number) => setF({ ...f, page, pageSize }), [f]);
 
   const renderColumns = () => [
-    { key: "id", header: "N°", render: (s: { id: number }) => <span className="font-mono text-xs font-semibold">{shipmentCode(s.id)}</span> },
-    { key: "c", header: "Cliente", render: (s: { clienteNombre: string; clienteEmpresa?: string; telefono?: string }) => (
+    { key: "id", header: "N°", render: (s: ShipmentDTO) => <span className="font-mono text-xs font-semibold">{shipmentCode(s.id)}</span> },
+    { key: "c", header: "Cliente", render: (s: ShipmentDTO) => (
       <div className="min-w-[150px]">
         <p className="font-medium">{s.clienteNombre}</p>
         <p className="text-xs text-slate-500">{s.clienteEmpresa || s.telefono}</p>
       </div>
     )},
-    { key: "d", header: "Ciudad", render: (s: { ciudad: string }) => (
+    { key: "d", header: "Ciudad", render: (s: ShipmentDTO) => (
       <div className="min-w-[140px]">
         <p className="text-xs text-slate-500">Ciudad</p>
         <p className="font-medium">{s.ciudad}</p>
       </div>
     )},
-    { key: "e", header: "Fechas", render: (s: { createdAt: string }) => (
+    { key: "e", header: "Fechas", render: (s: ShipmentDTO) => (
       <div>
         <p className="text-xs text-slate-500">Creado</p>
         <p>{formatDate(s.createdAt)}</p>
       </div>
     )},
-    { key: "i", header: "Items", render: (s: { itemCount?: number }) => <div className="text-right font-medium">{s.itemCount ?? 0} item{s.itemCount !== 1 ? "s" : ""}</div> },
-    { key: "t", header: "Total", render: (s: { total: number }) => <div className="text-right font-medium">{formatMoney(s.total)}</div> },
+    { key: "i", header: "Items", render: (s: ShipmentDTO) => <div className="text-right font-medium">{s.itemCount ?? 0} item{s.itemCount !== 1 ? "s" : ""}</div> },
+    { key: "t", header: "Total", render: (s: ShipmentDTO) => <div className="text-right font-medium">{formatMoney(s.total)}</div> },
     { key: "e2", header: "Estado", render: (s: { estado: string }) => <Badge tone={s.estado === "entregado" ? "green" : s.estado === "cancelado" ? "red" : "amber"}>
       {SHIPMENT_STATE_LABELS[s.estado as keyof typeof SHIPMENT_STATE_LABELS]}
     </Badge> },
@@ -67,9 +67,7 @@ export function OrdersPage() {
     return (
       <Suspense fallback={<Loading />}>
         <PageHeader title="Historial de ventas" description="Ventas pasadas">
-          <EmptyState>
-            <p>No hay ventas registradas</p>
-          </EmptyState>
+          <EmptyState title="No hay ventas registradas" description="Ventas pasadas" />
         </PageHeader>
       </Suspense>
     );
@@ -96,7 +94,7 @@ export function OrdersPage() {
   ]}
   placeholder="Filtrar por estado"
   value={f.estado ?? ""}
-  onValueChange={onFilterEstado}
+  onChange={onFilterEstado}
 ></UISelect>
 
 <UISelect
@@ -107,21 +105,21 @@ export function OrdersPage() {
   ]}
   placeholder="Filtrar por página"
   value={String(f.pageSize)}
-  onValueChange={(v) => onPageChange(f.page, Number(v))}
+  onChange={(e) => onPageChange(f.page, Number((e.target ?? e).value))}
 ></UISelect>
         </div>
       </PageHeader>
-      <Table
-        data={rows}
+      <Table<ShipmentDTO>
+        rows={rows}
+        rowKey={(s) => s.id}
+        
         columns={renderColumns()}
-        columnsCount={7}
       />
 
       <Pagination
-        count={data.total}
+        total={data?.total ?? 0}
         page={f.page}
-        onChange={onPageChange}
-        showQuickJumper
+        onChange={(page) => onPageChange(page, f.pageSize)}
         pageSize={f.pageSize}
       />
     </Suspense>

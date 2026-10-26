@@ -16,7 +16,7 @@ import { FilterBar, Pagination, SearchBar, Table } from "@/components/ui/Table";
 import { formatMoney } from "@/utils/format";
 import { useAuth } from "@/contexts/AuthContext";
 
-export function SalesPage() {
+export default function SalesPage() {
   const params = useSearchParams();
   const [f, setF] = useState<{ q: string; estado: string }>({
     q: params.get("q") ?? "",
@@ -52,7 +52,11 @@ export function SalesPage() {
     const r = await createShipment({
       clienteId,
       telefono: "",
-      cantidad: qty,
+      direccion: "",
+      ciudad: "",
+      observaciones: "",
+      fechaEnvio: "",
+      items: [{ productoId: selectedProduct!.id, cantidad: qty }],
     });
     if (!r.ok) return toast.error(r.error);
     toast.success("Venta creada con estado 'pendiente'");
@@ -82,7 +86,7 @@ export function SalesPage() {
   options={products.map((p) => ({ value: String(p.id), label: p.nombre }))}
   placeholder="Producto"
   value={selectedProduct?.nombre ?? ""}
-  onValueChange={(v) => setSelectedProduct(products.find((p) => p.nombre === v) ?? null)}
+  onChange={(e) => setSelectedProduct(products.find((p) => p.nombre === e.target.value) ?? null)}
 >
 </Select>
       </div>
