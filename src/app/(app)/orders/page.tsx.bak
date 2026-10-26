@@ -1,0 +1,272 @@
+"use client";
+
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { useAsync } from "@/hooks/useAsync";
+import { listShipments } from "@/services/shipments/actions";
+import { SHIPMENT_STATES, SHIPMENT_STATE_LABELS } from "@/types";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
+import { EmptyState, Loading, PageHeader } from "@/components/ui/Feedback";
+import { FilterBar, Pagination, SearchBar, Table } from "@/components/ui/Table";
+import { Badge } from "@/components/ui/Badges";
+import { formatDate, formatMoney, shipmentCode } from "@/utils/format";
+
+const initialFilters = { q: "", estado: "", desde: "", hasta: "", page: 1, pageSize: 15 };
+
+export function OrdersPage() {
+  const params = useSearchParams();
+  const [f, setF] = useState({
+    q: params.get("q") ?? "",
+    estado: params.get("estado") ?? "",
+    desde: params.get("desde") ?? "",
+    hasta: params.get("hasta") ?? "",
+    page: Number(params.get("page")) ?? 1,
+    pageSize: Number(params.get("pageSize")) ?? 15,
+  });
+
+  const onSearch = useCallback((q: string) => setF({ q, estado: f.estado, desde: f.desde, hasta: f.hasta, page: 1 }), []);
+  const onFilterEstado = useCallback((e: string) => setF({ ...f, estado: e ?? "" }), []);
+  const onFilterFecha = useCallback((desde: string, hasta: string) => setF({ ...f, desde, hasta, page: 1 }), []);
+  const onPageChange = useCallback((page: number, pageSize: number) => setF({ ...f, page, pageSize }), []);
+
+  const renderColumns = () => [
+    { key: "id", header: "N°", render: (s) => <span className="font-mono text-xs font-semibold">{shipmentCode(s.id)}</span> },
+    { key: "c", header: "Cliente", render: (s) => (
+      <div className="min-w-[150px]">
+        <p className="font-medium">{s.clienteNombre}</p>
+        <p className="text-xs text-slate-500">{s.clienteEmpresa || s.telefono}</p>
+      </div>
+    )},
+    { key: "d", header: "Ciudad", render: (s) => (
+      <div className="min-w-[140px]">
+        <p className="text-xs text-slate-500">Ciudad</p>
+        <p className="font-medium">{s.ciudad}</p>
+      </div>
+    )},
+    { key: "e", header: "Fechas", render: (s) => (
+      <div>
+        <p className="text-xs text-slate-500">Creado</p>
+        <p>{formatDate(s.createdAt)}</p>
+      </div>
+    )},
+    { key: "i", header: "Items", render: (s) => <div className="text-right font-medium">{s.itemCount ?? 0} item{s.itemCount !== 1 ? "s" : ""}</div> },
+    { key: "t", header: "Total", render: (s) => <div className="text-right font-medium">{formatMoney(s.total)}</div> },
+    { key: "e2", header: "Estado", render: (s) => <Badge variant={s.estado === "entregado" ? "success" : s.estado === "cancelado" ? "danger" : "secondary"}>
+      {SHIPMENT_STATE_LABELS[s.estado as keyof typeof SHIPMENT_STATE_LABELS]}
+    </Badge> },
+  ];
+
+  const { data, loading } = useAsync(() => listShipments({}), []);
+  const rows = data?.rows ?? [];
+
+  if (loading || !rows.length) {
+    return (
+      <Suspense fallback={<Loading />}>
+        <PageHeader title="Historial de ventas" description="Ventas pasadas">
+          <EmptyState>
+            <p>No hay ventas registradas</p>
+          </EmptyState>
+        </PageHeader>
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<Loading />}>
+      <PageHeader title="Historial de ventas" description="Ventas pasadas con detalle de productos y cliente">
+        <div className="mt-4">
+          <SearchBar
+            placeholder="Buscar por cliente, empresa o N° de envío..."
+            value={f.q}
+            onChange={onSearch}
+          />
+          <Select
+            placeholder="Filtrar por estado"
+            value={f.estado ?? ""}
+            onValueChange={onFilterEstado}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+              <SelectContent>
+                <SelectItem value="">Todos</SelectItem>
+                {SHIPMENT_STATES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {SHIPMENT_STATE_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectTrigger>
+          </Select>
+          <Select
+            placeholder="Filtrar por página"
+            value={String(f.pageSize)}
+            onValueChange={(v) => onPageChange(f.page, Number(v))}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+              <SelectContent>
+                <SelectItem value={15}>15 por página</SelectItem>
+                <SelectItem value={30}>30 por página</SelectItem>
+                <SelectItem value={50}>50 por página</SelectItem>
+              </SelectContent>
+            </SelectTrigger>
+          </Select>
+        </div>
+
+        <Table
+          data={rows}
+          columns={renderColumns()}
+          columnsCount={7}
+        />
+
+        <Pagination
+          count={data.total}
+          page={f.page}
+          onChange={onPageChange}
+          showQuickJumper
+          pageSize={f.pageSize}
+        />
+      </Suspense>
+    </Suspense>
+  );
+}
+
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { useAsync } from "@/hooks/useAsync";
+import { listShipments } from "@/services/shipments/actions";
+import { SHIPMENT_STATES, SHIPMENT_STATE_LABELS } from "@/types";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
+import { EmptyState, Loading, PageHeader } from "@/components/ui/Feedback";
+import { FilterBar, Pagination, SearchBar, Table } from "@/components/ui/Table";
+import { Badge } from "@/components/ui/Badges";
+import { formatDate, formatMoney, shipmentCode } from "@/utils/format";
+
+const initialFilters = { q: "", estado: "", desde: "", hasta: "", page: 1, pageSize: 15 };
+
+export function OrdersPage() {
+  const params = useSearchParams();
+  const [f, setF] = useState({
+    q: params.get("q") ?? "",
+    estado: params.get("estado") ?? "",
+    desde: params.get("desde") ?? "",
+    hasta: params.get("hasta") ?? "",
+    page: Number(params.get("page")) ?? 1,
+    pageSize: Number(params.get("pageSize")) ?? 15,
+  });
+
+  const onSearch = useCallback((q: string) => setF({ q, estado: f.estado, desde: f.desde, hasta: f.hasta, page: 1 }), []);
+  const onFilterEstado = useCallback((e: string) => setF({ ...f, estado: e ?? "" }), []);
+  const onFilterFecha = useCallback((desde: string, hasta: string) => setF({ ...f, desde, hasta, page: 1 }), []);
+  const onPageChange = useCallback((page: number, pageSize: number) => setF({ ...f, page, pageSize }), []);
+
+  const renderColumns = () => [
+    { key: "id", header: "N°", render: (s) => <span className="font-mono text-xs font-semibold">{shipmentCode(s.id)}</span> },
+    { key: "c", header: "Cliente", render: (s) => (
+      <div className="min-w-[150px]">
+        <p className="font-medium">{s.clienteNombre}</p>
+        <p className="text-xs text-slate-500">{s.clienteEmpresa || s.telefono}</p>
+      </div>
+    )},
+    { key: "d", header: "Ciudad", render: (s) => (
+      <div className="min-w-[140px]">
+        <p className="text-xs text-slate-500">Ciudad</p>
+        <p className="font-medium">{s.ciudad}</p>
+      </div>
+    )},
+    { key: "e", header: "Fechas", render: (s) => (
+      <div>
+        <p className="text-xs text-slate-500">Creado</p>
+        <p>{formatDate(s.createdAt)}</p>
+      </div>
+    )},
+    { key: "i", header: "Items", render: (s) => <div className="text-right font-medium">{s.itemCount ?? 0} item{s.itemCount !== 1 ? "s" : ""}</div> },
+    { key: "t", header: "Total", render: (s) => <div className="text-right font-medium">{formatMoney(s.total)}</div> },
+    { key: "e2", header: "Estado", render: (s) => <Badge variant={s.estado === "entregado" ? "success" : s.estado === "cancelado" ? "danger" : "secondary"}>
+      {SHIPMENT_STATE_LABELS[s.estado as keyof typeof SHIPMENT_STATE_LABELS]}
+    </Badge> },
+  ];
+
+  const { data, loading } = useAsync(() => listShipments({}), []);
+  const rows = data?.rows ?? [];
+
+  if (loading || !rows.length) {
+    return (
+      <Suspense fallback={<Loading />}>
+        <PageHeader title="Historial de ventas" description="Ventas pasadas">
+          <EmptyState>
+            <p>No hay ventas registradas</p>
+          </EmptyState>
+        </PageHeader>
+      </Suspense>
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<Loading />}>
+      <PageHeader title="Historial de ventas" description="Ventas pasadas con detalle de productos y cliente">
+        <div className="mt-4">
+          <SearchBar
+            placeholder="Buscar por cliente, empresa o N° de envío..."
+            value={f.q}
+            onChange={onSearch}
+          />
+          <Select
+            placeholder="Filtrar por estado"
+            value={f.estado ?? ""}
+            onValueChange={onFilterEstado}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+              <SelectContent>
+                <SelectItem value="">Todos</SelectItem>
+                {SHIPMENT_STATES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {SHIPMENT_STATE_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectTrigger>
+          </Select>
+          <Select
+            placeholder="Filtrar por página"
+            value={String(f.pageSize)}
+            onValueChange={(v) => onPageChange(f.page, Number(v))}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+              <SelectContent>
+                <SelectItem value={15}>15 por página</SelectItem>
+                <SelectItem value={30}>30 por página</SelectItem>
+                <SelectItem value={50}>50 por página</SelectItem>
+              </SelectContent>
+            </SelectTrigger>
+          </Select>
+        </div>
+
+        <Table
+          data={rows}
+          columns={renderColumns()}
+          columnsCount={7}
+        />
+
+        <Pagination
+          count={data.total}
+          page={f.page}
+          onChange={onPageChange}
+          showQuickJumper
+          pageSize={f.pageSize}
+        />
+      </Suspense>
+    </Suspense>
+  );
+}
