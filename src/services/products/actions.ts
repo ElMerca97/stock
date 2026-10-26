@@ -56,6 +56,15 @@ export interface ProductFilters {
   sort?: "nombre" | "stock" | "recientes";
 }
 
+export interface ProductOptionDTO {
+  id: number;
+  nombre: string;
+  sku: string;
+  stock: number;
+  precioVenta: number;
+  activo: boolean;
+}
+
 export async function listProducts(f: ProductFilters = {}): Promise<ActionResult<Paginated<ProductDTO>>> {
   try {
     await requireUser();
@@ -95,7 +104,7 @@ export async function listProducts(f: ProductFilters = {}): Promise<ActionResult
 
 /** Lightweight list for selectors (shipments, movements). */
 export async function listProductOptions(): Promise<
-  ActionResult<{ id: number; nombre: string; sku: string; stock: number; precioVenta: number; activo: boolean }[]>
+  ActionResult<ProductOptionDTO[]>
 > {
   try {
     await requireUser();

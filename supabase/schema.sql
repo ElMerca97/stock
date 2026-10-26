@@ -119,6 +119,13 @@ create table if not exists public.shipment_items (
   subtotal numeric(14,2) not null
 );
 
+create table if not exists public.sale_requests (
+  idempotency_key uuid primary key,
+  request_hash text not null,
+  shipment_id bigint not null unique references public.shipments(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
 -- ---------- STOCK MOVEMENTS ----------
 create table if not exists public.stock_movements (
   id bigserial primary key,

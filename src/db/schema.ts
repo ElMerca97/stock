@@ -132,6 +132,16 @@ export const shipmentItems = pgTable("shipment_items", {
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull(),
 });
 
+export const saleRequests = pgTable("sale_requests", {
+  idempotencyKey: uuid("idempotency_key").primaryKey(),
+  requestHash: text("request_hash").notNull(),
+  shipmentId: integer("shipment_id")
+    .notNull()
+    .unique()
+    .references(() => shipments.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const stockMovements = pgTable(
   "stock_movements",
   {

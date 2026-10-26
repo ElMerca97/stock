@@ -1,8 +1,9 @@
 "use server";
 
-import { and, desc, eq, gte, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { createHash } from "crypto";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { customers, products, shipmentItems, shipments } from "@/db/schema";
+import { customers, products, saleRequests, shipmentItems, shipments } from "@/db/schema";
 import {
   SHIPMENT_STATES,
   SHIPMENT_STATE_LABELS,
@@ -238,6 +239,193 @@ export async function createShipment(input: ShipmentInput): Promise<ActionResult
       return s.id;
     });
     return { ok: true, data: { id } };
+  } catch (e) {
+    return { ok: false, error: errorMessage(e) };
+  }
+}
+
+export interface SaleInput {
+  clienteId: number;
+  idempotencyKey: string;
+  items: { productoId: number; cantidad: number }[];
+}
+
+export interface SaleReceipt {
+  id: number;
+  createdAt: string;
+  total: string;
+  replayed: boolean;
+}
+
+const MAX_SALE_TOTAL_CENTS = 99_999_999_999_999;
+
+function centsFromDatabase(value: string): number {
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value);
+  if (!match) throw new ValidationError("El precio del producto no tiene un formato monetario válido.");
+  const cents = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0") || "0");
+  if (!Number.isSafeInteger(cents)) throw new ValidationError("El precio del producto supera el máximo permitido.");
+  return cents;
+}
+
+function decimalFromCents(cents: number): string {
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+}
+
+/**
+ * Registra una venta de mostrador como un envío en preparación, usando el
+ * historial, los movimientos y la deducción de stock transaccionales existentes.
+ */
+export async function createSale(input: SaleInput): Promise<ActionResult<SaleReceipt>> {
+  try {
+    const me = await requireUser();
+    if (!me.puedeMovimientos) throw new PermissionError("No tenés permiso para registrar movimientos de stock.");
+
+    const clienteId = int(input.clienteId, "Cliente", { min: 1 });
+    const idempotencyKey = str(input.idempotencyKey, "Clave de operación", { required: true, max: 36 }).toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(idempotencyKey))
+      throw new ValidationError("La clave de operación no es válida. Volvé a intentar.");
+    if (!input.items?.length) throw new ValidationError("Agregá al menos un producto.");
+
+    const quantities = new Map<number, number>();
+    for (const item of input.items) {
+      const productoId = int(item.productoId, "Producto", { min: 1 });
+      const cantidad = int(item.cantidad, "Cantidad", { min: 1, max: 100_000 });
+      const merged = (quantities.get(productoId) ?? 0) + cantidad;
+      if (merged > 100_000) throw new ValidationError("La cantidad por producto no puede superar 100.000 unidades.");
+      quantities.set(productoId, merged);
+    }
+
+    const canonicalItems = [...quantities].sort(([a], [b]) => a - b);
+    const requestHash = createHash("sha256")
+      .update(JSON.stringify({ userId: me.id, clienteId, items: canonicalItems }))
+      .digest("hex");
+
+    const receipt = await db.transaction(async (tx) => {
+      // Serializa reintentos con la misma clave antes de consultar o crear la venta.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idempotencyKey}))`);
+      const [previous] = await tx
+        .select({ requestHash: saleRequests.requestHash, shipmentId: saleRequests.shipmentId })
+        .from(saleRequests)
+        .where(eq(saleRequests.idempotencyKey, idempotencyKey))
+        .limit(1);
+
+      if (previous) {
+        if (previous.requestHash !== requestHash)
+          throw new ValidationError("Esta confirmación ya fue usada con otros datos. Revisá el historial antes de iniciar otra venta.");
+        const [shipment] = await tx
+          .select({ id: shipments.id, createdAt: shipments.createdAt, total: shipments.total })
+          .from(shipments)
+          .where(eq(shipments.id, previous.shipmentId))
+          .limit(1);
+        if (!shipment) throw new ValidationError("No se encontró la venta asociada a esta confirmación.");
+        return {
+          id: shipment.id,
+          createdAt: shipment.createdAt.toISOString(),
+          total: shipment.total,
+          replayed: true,
+        };
+      }
+
+      const [customer] = await tx
+        .select({
+          id: customers.id,
+          telefono: customers.telefono,
+          direccion: customers.direccion,
+          ciudad: customers.ciudad,
+        })
+        .from(customers)
+        .where(and(eq(customers.id, clienteId), isNull(customers.deletedAt)))
+        .for("share")
+        .limit(1);
+      if (!customer) throw new ValidationError("El cliente no existe o fue eliminado.");
+
+      const productIds = canonicalItems.map(([id]) => id);
+      const lockedProducts = await tx
+        .select({
+          id: products.id,
+          nombre: products.nombre,
+          sku: products.sku,
+          precioVenta: products.precioVenta,
+          stock: products.stock,
+          activo: products.activo,
+          deletedAt: products.deletedAt,
+        })
+        .from(products)
+        .where(inArray(products.id, productIds))
+        .orderBy(asc(products.id))
+        .for("update");
+      if (lockedProducts.length !== productIds.length)
+        throw new ValidationError("Algún producto seleccionado ya no existe.");
+
+      const productById = new Map(lockedProducts.map((product) => [product.id, product]));
+      const rows: { productoId: number; cantidad: number; precioUnitario: string; subtotal: string }[] = [];
+      let totalCents = 0;
+
+      for (const [productoId, cantidad] of canonicalItems) {
+        const product = productById.get(productoId)!;
+        if (product.deletedAt) throw new ValidationError(`El producto "${product.nombre}" fue eliminado.`);
+        if (!product.activo) throw new ValidationError(`El producto "${product.nombre}" está inactivo.`);
+        if (cantidad > product.stock)
+          throw new ValidationError(`Stock insuficiente para "${product.nombre}": disponible ${product.stock}, solicitado ${cantidad}.`);
+        const unitCents = centsFromDatabase(product.precioVenta);
+        if (unitCents > Math.floor(MAX_SALE_TOTAL_CENTS / cantidad))
+          throw new ValidationError(`El subtotal de "${product.nombre}" supera el máximo permitido.`);
+        const subtotalCents = unitCents * cantidad;
+        if (subtotalCents > MAX_SALE_TOTAL_CENTS)
+          throw new ValidationError(`El subtotal de "${product.nombre}" supera el máximo permitido.`);
+        if (totalCents > MAX_SALE_TOTAL_CENTS - subtotalCents)
+          throw new ValidationError("El total de la venta supera el máximo permitido.");
+        totalCents += subtotalCents;
+        rows.push({
+          productoId,
+          cantidad,
+          precioUnitario: decimalFromCents(unitCents),
+          subtotal: decimalFromCents(subtotalCents),
+        });
+      }
+
+      const total = decimalFromCents(totalCents);
+      const [shipment] = await tx
+        .insert(shipments)
+        .values({
+          clienteId: customer.id,
+          telefono: customer.telefono,
+          direccion: customer.direccion,
+          ciudad: customer.ciudad,
+          total,
+          createdBy: me.id,
+          estado: "preparando",
+          stockDescontado: true,
+        })
+        .returning({ id: shipments.id, createdAt: shipments.createdAt });
+      await tx.insert(shipmentItems).values(rows.map((row) => ({ ...row, envioId: shipment.id })));
+
+      const code = shipmentCode(shipment.id);
+      for (const row of rows) {
+        await applyStockMovement(tx, {
+          productoId: row.productoId,
+          tipo: "salida",
+          cantidad: row.cantidad,
+          usuarioId: me.id,
+          motivo: `Venta ${code} confirmada`,
+          envioId: shipment.id,
+        });
+      }
+
+      await tx.insert(saleRequests).values({
+        idempotencyKey,
+        requestHash,
+        shipmentId: shipment.id,
+      });
+      return {
+        id: shipment.id,
+        createdAt: shipment.createdAt.toISOString(),
+        total,
+        replayed: false,
+      };
+    });
+
+    return { ok: true, data: receipt };
   } catch (e) {
     return { ok: false, error: errorMessage(e) };
   }
