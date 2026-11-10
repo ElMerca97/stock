@@ -5,8 +5,8 @@ import { ThemeProvider, themeScript } from "@/contexts/ThemeContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StockPro — Gestión de stock para distribuidoras",
-  description: "Control de inventario, productos, clientes y envíos para distribuidoras.",
+  title: "Ferretería Lausana",
+  description: "Control de inventario, productos, clientes y envíos.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

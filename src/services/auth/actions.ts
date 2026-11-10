@@ -27,11 +27,7 @@ import {
 } from "./rateLimit";
 import { ensureSeed } from "@/services/seed";
 import { deleteStoredFileIfOrphan, safeDeleteStoredFile } from "@/services/storage/files";
-
-/** Enlaces de reset visibles en pantalla solo fuera de producción (o con RESET_LINK_ON_SCREEN=1). */
-function resetLinkVisibleOnScreen(): boolean {
-  return process.env.NODE_ENV !== "production" || process.env.RESET_LINK_ON_SCREEN === "1";
-}
+import { assertEmailConfigured, sendPasswordResetEmail } from "./email";
 
 export async function loginAction(input: { email: string; password: string }): Promise<ActionResult> {
   const ip = await clientIp();
@@ -93,10 +89,10 @@ export async function logoutAction(): Promise<ActionResult> {
 
 /**
  * Creates a one-time password reset token valid for 1 hour.
- * No email provider is configured, so the link is returned to be shown on screen
- * (replace with an email integration in production).
+ * A generic email is sent whether or not the address belongs to an account, so
+ * provider errors do not reveal account existence.
  */
-export async function requestPasswordResetAction(input: { email: string }): Promise<ActionResult<{ link: string | null }>> {
+export async function requestPasswordResetAction(input: { email: string }): Promise<ActionResult> {
   const ip = await clientIp();
   const emailRaw = (input.email ?? "").trim().toLowerCase();
   const emailKey = `reset:email:${emailRaw}`;
@@ -105,16 +101,29 @@ export async function requestPasswordResetAction(input: { email: string }): Prom
     await assertNotLocked(emailKey, RESET_POLICY);
     await assertNotLocked(ipKey, RESET_POLICY);
     const email = vEmail(input.email);
+    assertEmailConfigured();
     const [u] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.email, email)).limit(1);
     // Contabilizar el intento de restablecimiento por IP (tanto si la cuenta existe como si no),
     // para aplicar RESET_POLICY sin permitir bloqueo dirigido a una cuenta mediante su correo.
     await registerFailure(ipKey, RESET_POLICY);
-    if (!u) return { ok: true, data: { link: null } }; // don't reveal account existence
-    const token = newToken();
-    await db.insert(passwordResets).values({ id: sha256(token), userId: u.id, expiresAt: new Date(Date.now() + 3600_000) });
-    // En producción el enlace no se muestra en pantalla: exige integración de email
-    // (o RESET_LINK_ON_SCREEN=1 únicamente en entornos controlados/demo).
-    return { ok: true, data: { link: resetLinkVisibleOnScreen() ? `/reset-password?token=${token}` : null } };
+    const token = u ? newToken() : null;
+    const resetId = token ? sha256(token) : null;
+    if (u && resetId) {
+      await db.insert(passwordResets).values({ id: resetId, userId: u.id, expiresAt: new Date(Date.now() + 3600_000) });
+    }
+    try {
+      await sendPasswordResetEmail(email, token);
+    } catch (e) {
+      if (resetId) {
+        try {
+          await db.delete(passwordResets).where(eq(passwordResets.id, resetId));
+        } catch {
+          console.error("[password-reset] No se pudo invalidar el token tras un fallo de envío.");
+        }
+      }
+      throw e;
+    }
+    return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: errorMessage(e) };
   }

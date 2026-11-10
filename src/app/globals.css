@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -54,4 +54,52 @@ body {
 }
 .animate-fade-in {
   animation: fade-in 0.15s ease-out;
+}
+
+.receipt-document {
+  box-sizing: border-box;
+  width: min(100%, 80mm);
+  margin: 0 auto;
+  padding: 6mm;
+  background: #fff;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.receipt-header { text-align: center; }
+.receipt-header h1 { margin: 0; font-size: 16pt; font-weight: 700; }
+.receipt-header p { margin: 2px 0; font-size: 8pt; }
+.receipt-logo { display: block; max-width: 24mm; max-height: 18mm; margin: 0 auto 3mm; object-fit: contain; filter: grayscale(1); }
+.receipt-meta { margin-top: 5mm; font-size: 8.5pt; }
+.receipt-meta p { margin: 1mm 0; }
+.receipt-rule { margin: 4mm 0; border-top: 1px dashed #000; }
+.receipt-document h2 { margin: 0 0 2mm; font-size: 10pt; font-weight: 700; text-transform: uppercase; }
+.receipt-item { margin: 0 0 3mm; break-inside: avoid; page-break-inside: avoid; }
+.receipt-item-name { margin: 0; font-weight: 600; }
+.receipt-item-sku { margin: 0; font-size: 8pt; }
+.receipt-item-prices { display: flex; justify-content: space-between; gap: 3mm; font-size: 9pt; }
+.receipt-summary p { display: flex; justify-content: space-between; gap: 3mm; margin: 1mm 0; }
+.receipt-summary .receipt-total { margin-top: 2mm; padding-top: 2mm; border-top: 1px solid #000; font-size: 12pt; font-weight: 700; }
+.receipt-footer { margin-top: 5mm; text-align: center; font-size: 8pt; }
+.receipt-footer p { margin: 1mm 0; }
+.print-receipt { display: none; }
+
+@media print {
+  @page { size: auto; margin: 10mm; }
+  html, body { min-height: 0; background: #fff !important; color: #000 !important; }
+  body * { visibility: hidden !important; }
+  .print-receipt, .print-receipt * { visibility: visible !important; }
+  .print-receipt {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: block !important;
+    width: 100%;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .receipt-document { width: min(100%, 80mm); margin: 0 auto; padding: 0; }
+  .receipt-item, .receipt-meta, .receipt-summary, .receipt-footer { break-inside: avoid; page-break-inside: avoid; }
 }

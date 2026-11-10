@@ -13,6 +13,8 @@ export interface DashboardData {
     sinStock: number;
     unidades: number;
     categorias: number;
+    ventasAprobadas: number;
+    ventasCanceladas: number;
     enviosPendientes: number;
     enviosRealizados: number;
     valorInventario: number;
@@ -32,13 +34,15 @@ export async function getDashboard(): Promise<ActionResult<DashboardData>> {
     const statsRes = await db.execute<Record<string, number>>(sql`
       select
         (select count(*)::int from products where deleted_at is null) as total_productos,
-        (select count(*)::int from products where deleted_at is null and activo and stock > 0 and stock <= stock_minimo) as stock_bajo,
-        (select count(*)::int from products where deleted_at is null and activo and stock <= 0) as sin_stock,
+        (select count(*)::int from products where deleted_at is null and activo and stock - stock_reservado > 0 and stock - stock_reservado <= stock_minimo) as stock_bajo,
+        (select count(*)::int from products where deleted_at is null and activo and stock - stock_reservado <= 0) as sin_stock,
         (select coalesce(sum(stock),0)::int from products where deleted_at is null) as unidades,
         (select coalesce(sum(stock * precio_compra),0)::float from products where deleted_at is null) as valor,
         (select count(*)::int from categories) as categorias,
-        (select count(*)::int from shipments where estado in ('pendiente','preparando','listo')) as envios_pendientes,
-        (select count(*)::int from shipments where estado in ('enviado','entregado')) as envios_realizados`);
+        (select count(*)::int from shipments where estado <> 'cancelado') as ventas_aprobadas,
+        (select count(*)::int from shipments where estado = 'cancelado') as ventas_canceladas,
+        (select count(*)::int from shipments where estado in ('pendiente', 'preparando', 'listo')) as envios_pendientes,
+        (select count(*)::int from shipments where estado = 'entregado') as envios_realizados`);
     const s = statsRes.rows[0];
     const stats = {
       totalProductos: Number(s.total_productos),
@@ -46,6 +50,8 @@ export async function getDashboard(): Promise<ActionResult<DashboardData>> {
       sinStock: Number(s.sin_stock),
       unidades: Number(s.unidades),
       categorias: Number(s.categorias),
+      ventasAprobadas: Number(s.ventas_aprobadas),
+      ventasCanceladas: Number(s.ventas_canceladas),
       enviosPendientes: Number(s.envios_pendientes),
       enviosRealizados: Number(s.envios_realizados),
       valorInventario: me.rol === "admin" ? Number(s.valor) : 0,
@@ -58,7 +64,7 @@ export async function getDashboard(): Promise<ActionResult<DashboardData>> {
         from categories c left join products p on p.categoria_id = c.id and p.deleted_at is null
         group by c.id order by c.nombre`),
       db.execute<{ nombre: string; stock: number; minimo: number }>(sql`
-        select nombre, stock, stock_minimo as minimo from products where deleted_at is null and activo
+        select nombre, stock - stock_reservado as stock, stock_minimo as minimo from products where deleted_at is null and activo
         order by stock desc limit 10`),
       db.execute<{ nombre: string; movido: number }>(sql`
         select p.nombre, sum(m.cantidad)::int as movido from stock_movements m join products p on p.id = m.producto_id

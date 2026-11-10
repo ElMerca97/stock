@@ -15,7 +15,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
         <div className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-indigo-400/20 blur-3xl" />
         <div className="relative flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 backdrop-blur"><Boxes className="h-6 w-6" /></span>
-          <span className="text-xl font-bold">StockPro</span>
+          <span className="text-xl font-bold">Ferretería Lausana</span>
         </div>
         <div className="relative space-y-6">
           <h2 className="text-4xl leading-tight font-bold">El control de tu inventario, en un solo panel.</h2>
@@ -31,7 +31,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white"><Boxes className="h-5 w-5" /></span>
-            <span className="text-lg font-bold">StockPro</span>
+            <span className="text-lg font-bold">Ferretería Lausana</span>
           </div>
           {children}
         </div>

@@ -1,5 +1,5 @@
 -- =====================================================================
--- StockPro — Migración a schema de la app (auth propia con password_hash)
+-- Ferretería Lausana — Migración a schema de la app (auth propia con password_hash)
 -- Ejecutar en Supabase SQL Editor. Idempotente: podés correrlo varias veces.
 -- Alinea la DB con src/db/schema.ts (Drizzle).
 --

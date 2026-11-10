@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -7,9 +8,12 @@ import {
   serial,
   integer,
   numeric,
+  jsonb,
   primaryKey,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import type { ReceiptBusinessInfo } from "@/types";
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -72,6 +76,7 @@ export const products = pgTable(
     precioCompra: numeric("precio_compra", { precision: 12, scale: 2 }).notNull().default("0"),
     precioVenta: numeric("precio_venta", { precision: 12, scale: 2 }).notNull().default("0"),
     stock: integer("stock").notNull().default(0),
+    stockReservado: integer("stock_reservado").notNull().default(0),
     stockMinimo: integer("stock_minimo").notNull().default(0),
     imagen: text("imagen"),
     activo: boolean("activo").notNull().default(true),
@@ -79,7 +84,10 @@ export const products = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("products_categoria_idx").on(t.categoriaId)],
+  (t) => [
+    index("products_categoria_idx").on(t.categoriaId),
+    check("products_stock_reservado_check", sql`${t.stockReservado} >= 0 and ${t.stockReservado} <= ${t.stock}`),
+  ],
 );
 
 export const customers = pgTable("customers", {
@@ -89,13 +97,14 @@ export const customers = pgTable("customers", {
   empresa: text("empresa").notNull().default(""),
   telefono: text("telefono").notNull().default(""),
   email: text("email").notNull().default(""),
+  descuentoPorcentaje: numeric("descuento_porcentaje", { precision: 5, scale: 2 }).notNull().default("0"),
   direccion: text("direccion").notNull().default(""),
   ciudad: text("ciudad").notNull().default(""),
   departamento: text("departamento").notNull().default(""),
   observaciones: text("observaciones").notNull().default(""),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [check("customers_descuento_porcentaje_check", sql`${t.descuentoPorcentaje} >= 0 and ${t.descuentoPorcentaje} <= 100`)]);
 
 export const shipments = pgTable(
   "shipments",
@@ -105,17 +114,29 @@ export const shipments = pgTable(
       .references(() => customers.id, { onDelete: "restrict" }),
     estado: text("estado").notNull().default("pendiente"),
     total: numeric("total", { precision: 14, scale: 2 }).notNull().default("0"),
+    subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    descuentoPorcentaje: numeric("descuento_porcentaje", { precision: 5, scale: 2 }).notNull().default("0"),
+    descuentoImporte: numeric("descuento_importe", { precision: 14, scale: 2 }).notNull().default("0"),
     telefono: text("telefono").notNull().default(""),
     direccion: text("direccion").notNull().default(""),
     ciudad: text("ciudad").notNull().default(""),
+    clienteNombreSnapshot: text("cliente_nombre_snapshot").notNull().default("Consumidor final"),
+    receiptBusinessSnapshot: jsonb("receipt_business_snapshot").$type<ReceiptBusinessInfo>(),
     observaciones: text("observaciones").notNull().default(""),
     stockDescontado: boolean("stock_descontado").notNull().default(false),
+    stockReservado: boolean("stock_reservado").notNull().default(false),
     createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     fechaEnvio: timestamp("fecha_envio", { withTimezone: true }),
     fechaEntrega: timestamp("fecha_entrega", { withTimezone: true }),
   },
-  (t) => [index("shipments_cliente_idx").on(t.clienteId), index("shipments_estado_idx").on(t.estado)],
+  (t) => [
+    index("shipments_cliente_idx").on(t.clienteId),
+    index("shipments_estado_idx").on(t.estado),
+    check("shipments_descuento_porcentaje_check", sql`${t.descuentoPorcentaje} >= 0 and ${t.descuentoPorcentaje} <= 100`),
+    check("shipments_descuento_importe_check", sql`${t.descuentoImporte} >= 0 and ${t.descuentoImporte} <= ${t.subtotal}`),
+    check("shipments_total_check", sql`${t.total} = ${t.subtotal} - ${t.descuentoImporte}`),
+  ],
 );
 
 export const shipmentItems = pgTable("shipment_items", {
@@ -126,6 +147,8 @@ export const shipmentItems = pgTable("shipment_items", {
   productoId: integer("producto_id")
     .notNull()
     .references(() => products.id, { onDelete: "restrict" }),
+  productoNombre: text("producto_nombre").notNull(),
+  productoSku: text("producto_sku").notNull().default(""),
   cantidad: integer("cantidad").notNull(),
   precioUnitario: numeric("precio_unitario", { precision: 12, scale: 2 }).notNull(),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull(),
@@ -184,3 +207,38 @@ export const storageFiles = pgTable("storage_files", {
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+export const fiscalSettings = pgTable("fiscal_settings", {
+  id: integer("id").primaryKey().default(1),
+  enabled: boolean("enabled").notNull().default(false),
+  provider: text("provider").notNull().default("none"),
+  environment: text("environment").notNull().default("homologacion"),
+  defaultCfeType: text("default_cfe_type").notNull().default("e-ticket"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid("updated_by").references(() => profiles.id, { onDelete: "set null" }),
+});
+
+export const cfeDocuments = pgTable(
+  "cfe_documents",
+  {
+    id: serial("id").primaryKey(),
+    saleId: integer("sale_id")
+      .notNull()
+      .unique()
+      .references(() => shipments.id, { onDelete: "cascade" }),
+    cfeType: text("cfe_type").notNull(),
+    serie: text("serie"),
+    numero: text("numero"),
+    provider: text("provider").notNull().default("none"),
+    providerDocumentId: text("provider_document_id"),
+    status: text("status").notNull().default("pending"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }),
+    authorizationCode: text("authorization_code"),
+    documentUrl: text("document_url"),
+    errorMessage: text("error_message"),
+    providerResponse: jsonb("provider_response").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("cfe_documents_sale_idx").on(t.saleId), index("cfe_documents_status_idx").on(t.status)],
+);
+

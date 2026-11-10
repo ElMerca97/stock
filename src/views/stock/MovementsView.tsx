@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useAsync } from "@/hooks/useAsync";
@@ -18,14 +19,19 @@ import { MovementModal } from "@/components/stock/MovementModal";
 import type { MovementDTO } from "@/types";
 import { formatDateTime, shipmentCode } from "@/utils/format";
 
-const initial: MovementFilters = { productoId: null, categoriaId: null, tipo: "", usuarioId: "", desde: "", hasta: "", page: 1, pageSize: 20 };
+const initial: MovementFilters = { productoId: null, categoriaId: null, tipo: "", usuarioId: "", desde: "", hasta: "", page: 1, pageSize: 20, ventaEstado: null };
 
 export function MovementsView() {
+  const params = useSearchParams();
+  const ventaEstadoParam = params.get("ventaEstado");
   const { isAdmin, canMove } = useAuth();
   const { refreshAlerts } = useAlerts();
-  const [f, setF] = useState<MovementFilters>(initial);
+  const [f, setF] = useState<MovementFilters>({
+    ...initial,
+    ventaEstado: (ventaEstadoParam === "aprobada" || ventaEstadoParam === "cancelada") ? ventaEstadoParam : null,
+  });
   const upd = (patch: Partial<MovementFilters>) => setF((p) => ({ ...p, ...patch, page: patch.page ?? 1 }));
-  const { data, loading, error, reload } = useAsync(() => listMovements(f), [JSON.stringify(f)]);
+  const { data, loading, error, reload } = useAsync(() => listMovements(f), [f]);
   const prods = useAsync(() => listProductOptions(), []);
   const cats = useAsync(() => listCategories(), []);
   const users = useAsync(() => listUserOptions(), []);
@@ -78,9 +84,61 @@ export function MovementsView() {
             <span className="text-xs text-slate-400">a</span>
             <Input type="date" value={f.hasta} onChange={(e) => upd({ hasta: e.target.value })} aria-label="Hasta" className="sm:w-40" />
           </div>
-          {hasFilters && <Button variant="ghost" size="sm" onClick={() => setF(initial)}>Limpiar</Button>}
+          {f.ventaEstado && (
+            <span className="text-xs text-slate-500 flex items-center gap-1">
+              {f.ventaEstado === "aprobada" ? "Filtrado por ventas aprobadas" : "Filtrado por ventas canceladas"}
+            </span>
+          )}
+          {!f.ventaEstado && hasFilters && (
+            <Button variant="ghost" size="sm" onClick={() => setF(initial)}>Limpiar</Button>
+          )}
         </FilterBar>
-        <Table columns={columns} rows={data?.rows} loading={loading} error={error} onRetry={reload} rowKey={(m) => m.id} empty={<EmptyState title="Sin movimientos" description={hasFilters ? "No hay movimientos con estos filtros." : "Todavía no se registraron movimientos de stock."} />} />
+        {data && !loading ? (
+          <>
+            <Table
+              columns={columns}
+              rows={data.rows}
+              loading={loading}
+              error={error}
+              onRetry={reload}
+              rowKey={(m) => m.id}
+              empty={
+                <EmptyState
+                  title={error ? "Error" : "Sin movimientos"}
+                  description={
+                    error
+                      ? error
+                      : hasFilters
+                        ? "No se encontraron movimientos con los filtros aplicados."
+                        : "Todavía no se registraron movimientos de stock."
+                  }
+                />
+              }
+            />
+            {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={(page) => upd({ page })} />}
+          </>
+        ) : (
+          <Table
+            columns={columns}
+            rows={data?.rows}
+            loading={loading}
+            error={error}
+            onRetry={reload}
+            rowKey={(m) => m.id}
+            empty={
+              <EmptyState
+                title={error ? "Error" : "Sin movimientos"}
+                description={
+                  error
+                    ? error
+                    : hasFilters
+                      ? "No se encontraron movimientos con los filtros aplicados."
+                      : "Todavía no se registraron movimientos de stock."
+                }
+              />
+            }
+          />
+        )}
         {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={(page) => upd({ page })} />}
       </div>
       <MovementModal open={open} onClose={() => setOpen(false)} product={null} onDone={() => { void reload(); void refreshAlerts(); void prods.reload(); }} />

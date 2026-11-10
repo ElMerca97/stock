@@ -12,6 +12,7 @@ import {
   Package,
   PackageX,
   Tags,
+  X,
 } from "lucide-react";
 import {
   Area,
@@ -123,8 +124,8 @@ export function DashboardView() {
                 <StatCard label="Sin stock" value={formatNumber(data.stats.sinStock)} icon={<PackageX className="h-5 w-5" />} tone="bg-red-50 text-red-600 dark:bg-red-900/30" href="/products?stock=agotado" />
                 <StatCard label="Unidades totales" value={formatNumber(data.stats.unidades)} icon={<Boxes className="h-5 w-5" />} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30" sub={isAdmin ? `Valor: ${formatMoney(data.stats.valorInventario)}` : undefined} />
                 <StatCard label="Categorías" value={formatNumber(data.stats.categorias)} icon={<Tags className="h-5 w-5" />} tone="bg-violet-50 text-violet-600 dark:bg-violet-900/30" href={isAdmin ? "/categories" : undefined} />
-                <StatCard label="Envíos pendientes" value={formatNumber(data.stats.enviosPendientes)} icon={<Clock className="h-5 w-5" />} tone="bg-sky-50 text-sky-600 dark:bg-sky-900/30" href="/shipments" sub="Pendiente · Preparando · Listo" />
-                <StatCard label="Envíos realizados" value={formatNumber(data.stats.enviosRealizados)} icon={<CheckCircle2 className="h-5 w-5" />} tone="bg-teal-50 text-teal-600 dark:bg-teal-900/30" href="/shipments?estado=entregado" sub="Enviados y entregados" />
+                <StatCard label="Ventas aprobadas" value={formatNumber(data.stats.ventasAprobadas)} icon={<CheckCircle2 className="h-5 w-5" />} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30" href="/stock?ventaEstado=aprobada" sub="Movimientos de ventas activas" />
+                <StatCard label="Ventas canceladas" value={formatNumber(data.stats.ventasCanceladas)} icon={<X className="h-5 w-5" />} tone="bg-red-50 text-red-600 dark:bg-red-900/30" href="/stock?ventaEstado=cancelada" sub="Movimientos de ventas anuladas" />
                 <StatCard label="Alertas activas" value={formatNumber(alerts.length)} icon={<Layers className="h-5 w-5" />} tone="bg-rose-50 text-rose-600 dark:bg-rose-900/30" href="/alerts" />
               </>
             )}
@@ -160,9 +161,9 @@ export function DashboardView() {
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="Envíos por estado">
+              <ChartCard title="Ventas por estado">
                 {data.charts.enviosPorEstado.length === 0 ? (
-                  <p className="pt-20 text-center text-sm text-slate-500">Sin envíos registrados</p>
+                  <p className="pt-20 text-center text-sm text-slate-500">Sin ventas registradas</p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>

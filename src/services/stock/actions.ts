@@ -38,6 +38,8 @@ export interface MovementFilters {
   hasta?: string;
   page?: number;
   pageSize?: number;
+  /** Filtra movimientos vinculados a ventas (envíos) por su estado. */
+  ventaEstado?: "aprobada" | "cancelada" | null;
 }
 
 export async function listMovements(f: MovementFilters = {}): Promise<ActionResult<Paginated<MovementDTO>>> {
@@ -52,11 +54,20 @@ export async function listMovements(f: MovementFilters = {}): Promise<ActionResu
     if (f.productoId) conds.push(eq(stockMovements.productoId, f.productoId));
     if (f.categoriaId) conds.push(eq(products.categoriaId, f.categoriaId));
     if (f.tipo && MOVEMENT_TYPES.includes(f.tipo as MovementType)) conds.push(eq(stockMovements.tipo, f.tipo));
-    if (f.desde) conds.push(gte(stockMovements.createdAt, new Date(`${f.desde}T00:00:00`)));
+    if (f.desde) conds.push(gte(stockMovements.createdAt, new Date(`${f.desde}T00:00:00Z`)));
     if (f.hasta) {
-      const h = new Date(`${f.hasta}T00:00:00`);
-      h.setDate(h.getDate() + 1);
+      const h = new Date(`${f.hasta}T00:00:00Z`);
+      h.setUTCDate(h.getUTCDate() + 1);
       conds.push(lt(stockMovements.createdAt, h));
+    }
+    if (f.ventaEstado === "aprobada") {
+      conds.push(
+        sql`${stockMovements.envioId} is not null and exists (select 1 from shipments s where s.id = ${stockMovements.envioId} and s.estado <> 'cancelado')`
+      );
+    } else if (f.ventaEstado === "cancelada") {
+      conds.push(
+        sql`${stockMovements.envioId} is not null and exists (select 1 from shipments s where s.id = ${stockMovements.envioId} and s.estado = 'cancelado')`
+      );
     }
     const where = conds.length ? and(...conds) : undefined;
     const base = db

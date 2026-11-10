@@ -1,5 +1,5 @@
 -- =====================================================================
--- StockPro — Supabase schema with Row Level Security and Storage
+-- Ferretería Lausana — Supabase schema with Row Level Security and Storage
 -- Run in the Supabase SQL editor. Mirrors src/db/schema.ts.
 --
 -- ⚠️ NOTA DE ARQUITECTURA (ver supabase/README.md):
@@ -67,6 +67,7 @@ create table if not exists public.products (
   precio_compra numeric(12,2) not null default 0 check (precio_compra >= 0),
   precio_venta numeric(12,2) not null default 0 check (precio_venta >= 0),
   stock integer not null default 0 check (stock >= 0),
+  stock_reservado integer not null default 0 check (stock_reservado >= 0 and stock_reservado <= stock),
   stock_minimo integer not null default 0 check (stock_minimo >= 0),
   imagen text,
   activo boolean not null default true,
@@ -84,6 +85,8 @@ create table if not exists public.customers (
   empresa text not null default '',
   telefono text not null default '',
   email text not null default '',
+  descuento_porcentaje numeric(5,2) not null default 0
+    check (descuento_porcentaje >= 0 and descuento_porcentaje <= 100),
   direccion text not null default '',
   ciudad text not null default '',
   departamento text not null default '',
@@ -99,11 +102,20 @@ create table if not exists public.shipments (
   estado text not null default 'pendiente'
     check (estado in ('pendiente','preparando','listo','enviado','entregado','cancelado')),
   total numeric(14,2) not null default 0,
+  subtotal numeric(14,2) not null default 0,
+  descuento_porcentaje numeric(5,2) not null default 0
+    check (descuento_porcentaje >= 0 and descuento_porcentaje <= 100),
+  descuento_importe numeric(14,2) not null default 0
+    check (descuento_importe >= 0 and descuento_importe <= subtotal),
+  constraint shipments_total_check check (total = subtotal - descuento_importe),
   telefono text not null default '',
   direccion text not null default '',
   ciudad text not null default '',
+  cliente_nombre_snapshot text not null default 'Consumidor final',
+  receipt_business_snapshot jsonb,
   observaciones text not null default '',
   stock_descontado boolean not null default false,
+  stock_reservado boolean not null default false,
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   fecha_envio timestamptz,
@@ -116,6 +128,8 @@ create table if not exists public.shipment_items (
   id bigserial primary key,
   envio_id bigint not null references public.shipments(id) on delete cascade,
   producto_id bigint not null references public.products(id) on delete restrict,
+  producto_nombre text not null,
+  producto_sku text not null default '',
   cantidad integer not null check (cantidad > 0),
   precio_unitario numeric(12,2) not null,
   subtotal numeric(14,2) not null

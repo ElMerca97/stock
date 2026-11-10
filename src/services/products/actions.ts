@@ -20,6 +20,8 @@ const select = {
   precioCompra: products.precioCompra,
   precioVenta: products.precioVenta,
   stock: products.stock,
+  stockReservado: products.stockReservado,
+  stockDisponible: sql<number>`${products.stock} - ${products.stockReservado}`,
   stockMinimo: products.stockMinimo,
   imagen: products.imagen,
   activo: products.activo,
@@ -32,6 +34,8 @@ type Row = Omit<ProductDTO, "precioCompra" | "precioVenta" | "createdAt" | "upda
   precioVenta: string;
   createdAt: Date;
   updatedAt: Date;
+  stockReservado: number;
+  stockDisponible: number;
 };
 
 function toDTO(r: Row): ProductDTO {
@@ -79,12 +83,13 @@ export async function listProducts(f: ProductFilters = {}): Promise<ActionResult
     if (f.tipo) conds.push(eq(products.tipo, f.tipo));
     if (f.estado === "activo") conds.push(eq(products.activo, true));
     if (f.estado === "inactivo") conds.push(eq(products.activo, false));
-    if (f.stock === "agotado") conds.push(lte(products.stock, 0));
-    if (f.stock === "bajo") conds.push(sql`${products.stock} > 0 and ${products.stock} <= ${products.stockMinimo}`);
-    if (f.stock === "ok") conds.push(sql`${products.stock} > ${products.stockMinimo}`);
+    const stockDisponible = sql`${products.stock} - ${products.stockReservado}`;
+    if (f.stock === "agotado") conds.push(lte(stockDisponible, 0));
+    if (f.stock === "bajo") conds.push(sql`${stockDisponible} > 0 and ${stockDisponible} <= ${products.stockMinimo}`);
+    if (f.stock === "ok") conds.push(sql`${stockDisponible} > ${products.stockMinimo}`);
     const where = and(...conds);
     const order =
-      f.sort === "stock" ? [asc(products.stock)] : f.sort === "recientes" ? [desc(products.updatedAt)] : [asc(products.nombre)];
+      f.sort === "stock" ? [asc(stockDisponible)] : f.sort === "recientes" ? [desc(products.updatedAt)] : [asc(products.nombre)];
     const [rows, [{ total }]] = await Promise.all([
       db
         .select(select)
@@ -109,7 +114,14 @@ export async function listProductOptions(): Promise<
   try {
     await requireUser();
     const rows = await db
-      .select({ id: products.id, nombre: products.nombre, sku: products.sku, stock: products.stock, precioVenta: products.precioVenta, activo: products.activo })
+      .select({
+        id: products.id,
+        nombre: products.nombre,
+        sku: products.sku,
+        stock: sql<number>`${products.stock} - ${products.stockReservado}`,
+        precioVenta: products.precioVenta,
+        activo: products.activo,
+      })
       .from(products)
       .where(isNull(products.deletedAt))
       .orderBy(asc(products.nombre));

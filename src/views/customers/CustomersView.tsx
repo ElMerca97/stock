@@ -16,7 +16,7 @@ import { StatusBadge } from "@/components/ui/Badges";
 import type { CustomerDTO } from "@/types";
 import { formatDate, formatMoney, shipmentCode } from "@/utils/format";
 
-const empty: CustomerInput = { nombre: "", apellido: "", empresa: "", telefono: "", email: "", direccion: "", ciudad: "", departamento: "", observaciones: "" };
+const empty: CustomerInput = { nombre: "", apellido: "", empresa: "", telefono: "", email: "", descuentoPorcentaje: 0, direccion: "", ciudad: "", departamento: "", observaciones: "" };
 
 function CustomerForm({ open, onClose, customer, onSaved }: { open: boolean; onClose: () => void; customer: CustomerDTO | null; onSaved: () => void }) {
   const [f, setF] = useState<CustomerInput>(empty);
@@ -26,10 +26,10 @@ function CustomerForm({ open, onClose, customer, onSaved }: { open: boolean; onC
     if (!open) return;
     /* eslint-disable react-hooks/set-state-in-effect */
     setErrors({});
-    setF(customer ? { nombre: customer.nombre, apellido: customer.apellido, empresa: customer.empresa, telefono: customer.telefono, email: customer.email, direccion: customer.direccion, ciudad: customer.ciudad, departamento: customer.departamento, observaciones: customer.observaciones } : empty);
+    setF(customer ? { nombre: customer.nombre, apellido: customer.apellido, empresa: customer.empresa, telefono: customer.telefono, email: customer.email, descuentoPorcentaje: customer.descuentoPorcentaje, direccion: customer.direccion, ciudad: customer.ciudad, departamento: customer.departamento, observaciones: customer.observaciones } : empty);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, customer]);
-  const set = (k: keyof CustomerInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const set = (k: Exclude<keyof CustomerInput, "descuentoPorcentaje">) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -40,6 +40,8 @@ function CustomerForm({ open, onClose, customer, onSaved }: { open: boolean; onC
     if (!f.direccion.trim()) er.direccion = "Requerido";
     if (!f.ciudad.trim()) er.ciudad = "Requerido";
     if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) er.email = "Email inválido";
+    if (!Number.isFinite(f.descuentoPorcentaje) || f.descuentoPorcentaje < 0 || f.descuentoPorcentaje > 100)
+      er.descuentoPorcentaje = "Debe estar entre 0 y 100.";
     setErrors(er);
     if (Object.keys(er).length) return;
     setLoading(true);
@@ -67,6 +69,7 @@ function CustomerForm({ open, onClose, customer, onSaved }: { open: boolean; onC
         <Input label="Empresa" value={f.empresa} onChange={set("empresa")} />
         <Input label="Teléfono" required value={f.telefono} onChange={set("telefono")} error={errors.telefono} />
         <Input label="Email" type="email" value={f.email} onChange={set("email")} error={errors.email} />
+        <Input label="Descuento habitual (%)" type="number" min={0} max={100} step={0.01} value={f.descuentoPorcentaje} onChange={(e) => setF({ ...f, descuentoPorcentaje: e.target.value === "" ? 0 : Number(e.target.value) })} error={errors.descuentoPorcentaje} hint="Opcional. Se propone al realizar una venta." />
         <Input label="Dirección" required value={f.direccion} onChange={set("direccion")} error={errors.direccion} />
         <Input label="Ciudad" required value={f.ciudad} onChange={set("ciudad")} error={errors.ciudad} />
         <Input label="Departamento" value={f.departamento} onChange={set("departamento")} />
@@ -130,6 +133,7 @@ export function CustomersView() {
   const columns: Column<CustomerDTO>[] = [
     { key: "n", header: "Cliente", render: (c) => <div className="min-w-[150px]"><p className="font-medium">{c.nombre} {c.apellido}</p><p className="text-xs text-slate-500">{c.empresa || "—"}</p></div> },
     { key: "c", header: "Contacto", render: (c) => <div className="text-xs"><p>{c.telefono}</p><p className="text-slate-500">{c.email}</p></div> },
+    { key: "discount", header: "Descuento", className: "text-right", render: (c) => c.descuentoPorcentaje ? `${c.descuentoPorcentaje}%` : "—" },
     { key: "d", header: "Dirección", render: (c) => <div className="min-w-[150px] text-xs"><p>{c.direccion}</p><p className="text-slate-500">{c.ciudad}{c.departamento ? `, ${c.departamento}` : ""}</p></div> },
     { key: "e", header: "Envíos", className: "text-right", render: (c) => c.shipmentCount },
     { key: "f", header: "Registro", render: (c) => <span className="whitespace-nowrap">{formatDate(c.createdAt)}</span> },

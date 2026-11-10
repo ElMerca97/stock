@@ -44,7 +44,7 @@ export function LoginForm() {
   }
 
   return (
-    <Shell title="Iniciar sesión" subtitle="Accedé al panel de gestión de tu distribuidora.">
+    <Shell title="Iniciar sesión" subtitle="Accedé al panel de gestión.">
       <form onSubmit={submit} className="space-y-4">
         <ErrorBox msg={error} />
         <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} icon={<Mail className="h-4 w-4" />} placeholder="tu@empresa.com" />
@@ -106,7 +106,7 @@ export function ForgotForm() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ link: string | null } | null>(null);
+  const [done, setDone] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -115,28 +115,22 @@ export function ForgotForm() {
     const r = await requestPasswordResetAction({ email });
     setLoading(false);
     if (!r.ok) return setError(r.error);
-    setDone(r.data);
+    setDone(true);
   }
 
   return (
-    <Shell title="Recuperar contraseña" subtitle="Ingresá tu email y generaremos un enlace para restablecerla.">
+    <Shell title="Recuperar contraseña" subtitle="Ingresá tu email y te enviaremos instrucciones para restablecerla.">
       {done ? (
         <div className="space-y-4 text-sm">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-            Si el email está registrado, se generó un enlace de recuperación válido por 1 hora.
+            Si la dirección corresponde a una cuenta, recibirás un correo con las instrucciones. El enlace vence en una hora.
           </div>
-          {done.link && (
-            <div className="rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700">
-              <p className="mb-2 text-xs text-slate-500">No hay un proveedor de email configurado; usá este enlace directamente:</p>
-              <Link href={done.link} className="font-medium break-all text-brand-600 hover:underline">Restablecer contraseña →</Link>
-            </div>
-          )}
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <ErrorBox msg={error} />
           <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} icon={<Mail className="h-4 w-4" />} />
-          <Button type="submit" className="w-full" loading={loading}>Generar enlace</Button>
+          <Button type="submit" className="w-full" loading={loading}>Enviar instrucciones</Button>
         </form>
       )}
       <p className="mt-6 text-center text-sm"><Link href="/login" className="text-brand-600 hover:underline">← Volver al login</Link></p>

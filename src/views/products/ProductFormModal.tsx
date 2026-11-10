@@ -53,7 +53,11 @@ export function ProductFormModal({ open, onClose, product, categories, onSaved }
     if (f.precioCompra === "" || Number(f.precioCompra) < 0) e.precioCompra = "Importe inválido";
     if (f.precioVenta === "" || Number(f.precioVenta) < 0) e.precioVenta = "Importe inválido";
     if (!Number.isInteger(Number(f.stockMinimo)) || Number(f.stockMinimo) < 0) e.stockMinimo = "Entero ≥ 0";
-    if (!product && (!Number.isInteger(Number(f.stockInicial)) || Number(f.stockInicial) < 0)) e.stockInicial = "Entero ≥ 0";
+    if (!product) {
+      const stockInicialNum = Number(f.stockInicial);
+      if (f.stockInicial.trim() === "" || !Number.isInteger(stockInicialNum) || stockInicialNum < 0)
+        e.stockInicial = "Entero ≥ 0";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }

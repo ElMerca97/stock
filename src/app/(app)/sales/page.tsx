@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import {
   Minus,
   Package,
   Plus,
+  Printer,
   Search,
   ShoppingCart,
   Trash2,
@@ -24,7 +25,8 @@ import { useAsync } from "@/hooks/useAsync";
 import { listCustomers } from "@/services/customers/actions";
 import { listProductOptions, type ProductOptionDTO } from "@/services/products/actions";
 import { createSale, type SaleReceipt } from "@/services/shipments/actions";
-import { formatDateTime, formatMoney, shipmentCode } from "@/utils/format";
+import { formatDateTime, formatMoney, receiptCode } from "@/utils/format";
+import { ReceiptDocument } from "@/views/sales/ReceiptDocument";
 
 interface CartLine {
   productoId: number;
@@ -39,6 +41,12 @@ function formatCents(cents: number): string {
   return cents > MAX_TOTAL_CENTS ? "Importe excedido" : formatMoney(cents / 100);
 }
 
+function discountCentsFrom(totalCents: number, percentage: number): number {
+  const basisPoints = Math.round(percentage * 100);
+  return Math.floor(totalCents / 10_000) * basisPoints
+    + Math.round(((totalCents % 10_000) * basisPoints) / 10_000);
+}
+
 export default function SalesPage() {
   const router = useRouter();
   const { canMove } = useAuth();
@@ -47,6 +55,7 @@ export default function SalesPage() {
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [customerId, setCustomerId] = useState("");
+  const [discountInput, setDiscountInput] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
@@ -54,6 +63,8 @@ export default function SalesPage() {
   const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [success, setSuccess] = useState<SaleReceipt | null>(null);
+  const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
   const idempotencyKey = useRef<string | null>(null);
   const submittingRef = useRef(false);
 
@@ -77,6 +88,14 @@ export default function SalesPage() {
   }, [cart, products]);
   const cartQuantity = cart.reduce((total, line) => total + line.cantidad, 0);
   const selectedCustomer = customers.find((customer) => String(customer.id) === customerId);
+  const discountValid = discountInput === "" || (
+    Number.isFinite(Number(discountInput)) && Number(discountInput) >= 0 && Number(discountInput) <= 100
+  );
+  const discountPercent = discountInput === ""
+    ? selectedCustomer?.descuentoPorcentaje ?? 0
+    : Math.round(Number(discountInput) * 100) / 100;
+  const discountCents = discountValid ? discountCentsFrom(cartTotalCents, discountPercent) : 0;
+  const saleTotalCents = cartTotalCents - discountCents;
 
   function addProduct(product: ProductOptionDTO) {
     const current = cart.find((line) => line.productoId === product.id)?.cantidad ?? 0;
@@ -135,6 +154,10 @@ export default function SalesPage() {
       setCheckoutError("No tenés permiso para registrar movimientos de stock.");
       return;
     }
+    if (!discountValid) {
+      setCheckoutError("El descuento debe estar entre 0% y 100%.");
+      return;
+    }
     setCheckoutError(null);
     setReviewOpen(true);
   }
@@ -148,6 +171,7 @@ export default function SalesPage() {
     try {
       const result = await createSale({
         clienteId: customerId ? Number(customerId) : null,
+        descuentoPorcentaje: discountInput === "" ? null : Number(discountInput),
         idempotencyKey: idempotencyKey.current,
         items: cart.map(({ productoId, cantidad }) => ({ productoId, cantidad })),
       });
@@ -157,10 +181,12 @@ export default function SalesPage() {
         setCheckoutError(result.error);
         return;
       }
+      setReceipt(result.data);
       setOutcomeUnknown(false);
       setSuccess(result.data);
       setCart([]);
       setCustomerId("");
+      setDiscountInput("");
       setSearch("");
       idempotencyKey.current = null;
       setReviewOpen(false);
@@ -181,10 +207,26 @@ export default function SalesPage() {
 
   function startAnotherSale() {
     setSuccess(null);
+    setReceipt(null);
     setCheckoutError(null);
     setSearch("");
     setCustomerId("");
+    setDiscountInput("");
     setCart([]);
+  }
+
+  function printReceipt() {
+    if (!receipt) return;
+    try {
+      window.print();
+    } catch {
+      toast.error("El navegador no pudo abrir el diálogo de impresión.");
+    }
+  }
+
+  function viewReceipt() {
+    setSuccess(null);
+    setReceiptOpen(true);
   }
 
   return (
@@ -192,13 +234,14 @@ export default function SalesPage() {
       <PageHeader
         title="Nueva venta"
         description="Buscá productos, armá el carrito y confirmá la operación."
+        actions={<Button type="button" variant="secondary" onClick={() => router.push("/sales/history")}>Historial de ventas</Button>}
       />
 
       <div className="sticky top-0 z-20 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur lg:hidden dark:border-slate-800 dark:bg-slate-900/95">
         <div className="flex min-w-0 items-center gap-2">
           <ShoppingCart className="h-4 w-4 shrink-0 text-brand-600" />
           <span className="truncate text-sm font-medium">{cartQuantity} producto{cartQuantity !== 1 ? "s" : ""}</span>
-          <span className="font-semibold">{formatCents(cartTotalCents)}</span>
+          <span className="font-semibold">{formatCents(saleTotalCents)}</span>
         </div>
         <a href="#carrito" className="shrink-0 text-sm font-semibold text-brand-600 hover:text-brand-700">
           Ver carrito
@@ -393,7 +436,10 @@ export default function SalesPage() {
               <Select
                 aria-label="Cliente (opcional)"
                 value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
+                onChange={(event) => {
+                  setCustomerId(event.target.value);
+                  setCheckoutError(null);
+                }}
                 placeholder="Consumidor final (sin cliente)"
                 options={customers.map((customer) => ({
                   value: customer.id,
@@ -417,6 +463,20 @@ export default function SalesPage() {
                   {selectedCustomer.telefono || "Sin teléfono"} · {selectedCustomer.ciudad || "Sin ciudad"}
                 </p>
               )}
+              <Input
+                label="Descuento de esta venta (%)"
+                type="number"
+                min={0}
+                max={100}
+                step={0.01}
+                value={discountInput}
+                onChange={(event) => setDiscountInput(event.target.value)}
+                placeholder="Usar descuento habitual"
+                hint={selectedCustomer
+                  ? `Dejar vacío para aplicar el descuento habitual del cliente (${selectedCustomer.descuentoPorcentaje}%).`
+                  : "Opcional. Dejar vacío para no aplicar descuento."}
+                error={!discountValid ? "Ingresá un valor entre 0 y 100." : undefined}
+              />
             </div>
 
             {checkoutError && !reviewOpen && (
@@ -436,9 +496,15 @@ export default function SalesPage() {
                 <span>Subtotal</span>
                 <span>{formatCents(cartTotalCents)}</span>
               </div>
+              {discountPercent > 0 && (
+                <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
+                  <span>Descuento ({discountPercent}%)</span>
+                  <span>−{formatCents(discountCents)}</span>
+                </div>
+              )}
               <div className="mt-2 flex items-end justify-between gap-3">
                 <span className="font-semibold">Total</span>
-                <span className="text-2xl font-bold tracking-tight text-brand-700 dark:text-brand-300">{formatCents(cartTotalCents)}</span>
+                <span className="text-2xl font-bold tracking-tight text-brand-700 dark:text-brand-300">{formatCents(saleTotalCents)}</span>
               </div>
             </div>
             {cartTotalCents > MAX_TOTAL_CENTS && (
@@ -450,7 +516,7 @@ export default function SalesPage() {
             <Button
               type="button"
               className="h-12 w-full text-base"
-              disabled={!cart.length || cartTotalCents > MAX_TOTAL_CENTS || !canMove}
+              disabled={!cart.length || cartTotalCents > MAX_TOTAL_CENTS || !canMove || !discountValid}
               onClick={openReview}
               icon={<CheckCircle2 className="h-5 w-5" />}
             >
@@ -470,6 +536,12 @@ export default function SalesPage() {
         footer={
           success ? (
             <>
+              <Button type="button" variant="secondary" onClick={printReceipt}>
+                <Printer className="h-4 w-4" /> Imprimir boleta
+              </Button>
+              <Button type="button" variant="secondary" onClick={viewReceipt}>
+                Ver boleta
+              </Button>
               <Button type="button" variant="secondary" onClick={() => router.push("/orders")}>
                 Ver historial
               </Button>
@@ -483,7 +555,7 @@ export default function SalesPage() {
                 Volver
               </Button>
               <Button type="button" loading={submitting} onClick={() => void confirmSale()}>
-                Confirmar por {formatCents(cartTotalCents)}
+                Confirmar por {formatCents(saleTotalCents)}
               </Button>
             </>
           )
@@ -496,7 +568,7 @@ export default function SalesPage() {
             </span>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Identificador</p>
-              <p className="mt-1 font-mono text-lg font-bold">{shipmentCode(success.id)}</p>
+              <p className="mt-1 font-mono text-lg font-bold">{receiptCode(success.id)}</p>
             </div>
             <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-left dark:bg-slate-800/60">
               <div>
@@ -521,8 +593,11 @@ export default function SalesPage() {
                 </span>
               </p>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Unidades: {cartQuantity}</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Subtotal</p>
+              <p className="mt-1 font-semibold">{formatCents(cartTotalCents)}</p>
+              {discountPercent > 0 && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Descuento ({discountPercent}%): −{formatCents(discountCents)}</p>}
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Total a registrar</p>
-              <p className="mt-1 text-2xl font-bold text-brand-700 dark:text-brand-300">{formatCents(cartTotalCents)}</p>
+              <p className="mt-1 text-2xl font-bold text-brand-700 dark:text-brand-300">{formatCents(saleTotalCents)}</p>
             </div>
             {checkoutError && (
               <div role="alert" className="flex gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -552,6 +627,17 @@ export default function SalesPage() {
         confirmLabel="Vaciar carrito"
         loading={false}
       />
+      {receipt && (
+        <>
+          <Modal open={receiptOpen} onClose={() => setReceiptOpen(false)} title={`Boleta ${receiptCode(receipt.id)}`} size="sm">
+            <ReceiptDocument receipt={receipt} printable={false} />
+            <div className="mt-4 flex justify-end">
+              <Button type="button" onClick={printReceipt}><Printer className="h-4 w-4" /> Imprimir boleta</Button>
+            </div>
+          </Modal>
+          <ReceiptDocument receipt={receipt} />
+        </>
+      )}
     </main>
   );
 }

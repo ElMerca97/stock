@@ -4,7 +4,7 @@ import { and, asc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { customers, shipments } from "@/db/schema";
 import type { ActionResult, CustomerDTO, Paginated } from "@/types";
-import { email, errorMessage, str, ValidationError } from "@/utils/validation";
+import { email, errorMessage, money, str, ValidationError } from "@/utils/validation";
 import { requireAdmin, requireUser } from "@/services/auth/session";
 
 export async function listCustomers(f: { q?: string; ciudad?: string; page?: number; pageSize?: number } = {}): Promise<
@@ -38,6 +38,7 @@ export async function listCustomers(f: { q?: string; ciudad?: string; page?: num
           empresa: customers.empresa,
           telefono: customers.telefono,
           email: customers.email,
+          descuentoPorcentaje: customers.descuentoPorcentaje,
           direccion: customers.direccion,
           ciudad: customers.ciudad,
           departamento: customers.departamento,
@@ -55,7 +56,12 @@ export async function listCustomers(f: { q?: string; ciudad?: string; page?: num
     return {
       ok: true,
       data: {
-        rows: rows.map((r) => ({ ...r, shipmentCount: Number(r.shipmentCount), createdAt: r.createdAt.toISOString() })),
+        rows: rows.map((r) => ({
+          ...r,
+          descuentoPorcentaje: Number(r.descuentoPorcentaje ?? 0),
+          shipmentCount: Number(r.shipmentCount),
+          createdAt: r.createdAt.toISOString(),
+        })) as CustomerDTO[],
         total: Number(total),
         page,
         pageSize,
@@ -75,6 +81,11 @@ function parse(i: CustomerInput) {
     empresa: str(i.empresa, "Empresa", { max: 120 }),
     telefono: str(i.telefono, "Teléfono", { required: true, max: 40 }),
     email: email(i.email, "Email", false),
+    descuentoPorcentaje: (() => {
+      const value = money(i.descuentoPorcentaje, "Descuento");
+      if (value > 100) throw new ValidationError("El descuento no puede superar el 100%.");
+      return String(value);
+    })(),
     direccion: str(i.direccion, "Dirección", { required: true, max: 200 }),
     ciudad: str(i.ciudad, "Ciudad", { required: true, max: 80 }),
     departamento: str(i.departamento, "Departamento", { max: 80 }),

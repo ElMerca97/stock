@@ -30,6 +30,10 @@ export function shipmentCode(id: number): string {
   return `ENV-${String(id).padStart(5, "0")}`;
 }
 
+export function receiptCode(id: number): string {
+  return `BOL-${String(id).padStart(6, "0")}`;
+}
+
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
 }

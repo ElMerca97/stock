@@ -8,6 +8,7 @@ import {
   Boxes,
   LayoutDashboard,
   Package,
+  Settings,
   ShoppingCart,
   Tags,
   Truck,
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/sales", label: "Ventas", icon: ShoppingCart },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/users", label: "Usuarios", icon: UserCog, admin: true },
+  { href: "/settings/facturacion-electronica", label: "Configuración", icon: Settings, admin: true },
 ];
 
 export function Sidebar({ open, onClose, alertCount }: { open: boolean; onClose: () => void; alertCount: number }) {
@@ -47,7 +49,7 @@ export function Sidebar({ open, onClose, alertCount }: { open: boolean; onClose:
               <Boxes className="h-5 w-5" />
             </span>
             <span>
-              <span className="block text-sm leading-tight font-bold">StockPro</span>
+              <span className="block text-sm leading-tight font-bold">Ferretería Lausana</span>
               <span className="block text-[11px] leading-tight text-slate-500">Distribuidora</span>
             </span>
           </Link>
@@ -80,7 +82,7 @@ export function Sidebar({ open, onClose, alertCount }: { open: boolean; onClose:
             );
           })}
         </nav>
-        <div className="border-t border-slate-200 p-4 text-[11px] text-slate-400 dark:border-slate-800">© {new Date().getFullYear()} StockPro · v1.0</div>
+        <div className="border-t border-slate-200 p-4 text-[11px] text-slate-400 dark:border-slate-800">© {new Date().getFullYear()} Ferretería Lausana · v1.0</div>
       </aside>
     </>
   );

@@ -6,13 +6,31 @@ import { categories, profiles, products, storageFiles } from "@/db/schema";
 export const BUCKETS = ["products", "categories", "avatars"] as const;
 export type Bucket = (typeof BUCKETS)[number];
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const ALLOWED = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
 
+/** Firmas de archivo (magic bytes) por tipo MIME permitido. Evita subir archivos no imagen con extensión falsificada. */
+const MAGIC_BYTES: Record<string, Buffer> = {
+  "image/png": Buffer.from([0x89, 0x50, 0x4e, 0x47]), // PNG
+  "image/jpeg": Buffer.from([0xff, 0xd8, 0xff]), // JPEG
+  "image/webp": Buffer.from([0x52, 0x49, 0x46, 0x46]), // RIFF (WebP starts with RIFF)
+  "image/gif": Buffer.from([0x47, 0x49, 0x46, 0x38]), // GIF87a/GIF89a
+};
+
+function validateImageSignature(buf: Buffer, mime: string): void {
+  const sig = MAGIC_BYTES[mime];
+  if (!sig) throw new Error("Tipo de imagen no soportado.");
+  if (buf.length < sig.length) throw new Error("Archivo demasiado pequeño para ser una imagen válida.");
+  for (let i = 0; i < sig.length; i++) {
+    if (buf[i] !== sig[i]) throw new Error("El contenido del archivo no coincide con el tipo de imagen declarado. Puede ser un archivo malicioso disfrazado.");
+  }
+}
+
 export async function storeFile(bucket: Bucket, file: File, ownerId: string): Promise<string> {
-  if (!ALLOWED.includes(file.type)) throw new Error("Formato no permitido. Usá PNG, JPG, WEBP o GIF.");
+  if (!ALLOWED_MIME.includes(file.type)) throw new Error("Formato no permitido. Usá PNG, JPG, WEBP o GIF.");
   if (file.size > MAX_FILE_BYTES) throw new Error("La imagen supera el máximo de 2 MB.");
   const buf = Buffer.from(await file.arrayBuffer());
+  validateImageSignature(buf, file.type);
   const path = `${bucket}/${randomUUID()}.${EXT[file.type]}`;
   await db.insert(storageFiles).values({ path, bucket, mime: file.type, size: file.size, data: buf.toString("base64"), ownerId });
   return `/api/storage/${path}`;

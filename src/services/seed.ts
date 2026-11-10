@@ -64,14 +64,17 @@ async function runSeed() {
     ]);
   });
 
-  // La credencial inicial se muestra solo en la consola del servidor, una vez.
-  // Si usaste SEED_ADMIN_INITIAL_PASSWORD no se imprime ningún secreto.
+  // La credencial inicial NUNCA se imprime por consola por seguridad.
+  // Si no se definió SEED_ADMIN_INITIAL_PASSWORD, se genera aleatoriamente y
+  // el administrador debe usar "Olvidé mi contraseña" o contactar a otro admin
+  // para obtener acceso tras el primer inicio.
   if (!envPassword) {
     console.warn(
       "\n[seed] Se creó el administrador inicial.\n" +
         "  Email:     admin@sistema.local\n" +
-        `  Contraseña (mostrada solo una vez, anotala ahora): ${password}\n` +
-        '  Después del primer ingreso, cambiala desde "Mi perfil".\n',
+        "  Contraseña: generada aleatoriamente (no se muestra por consola).\n" +
+        '  Para acceder, configurá SEED_ADMIN_INITIAL_PASSWORD antes del primer arranque\n' +
+        '  o usá la recuperación de contraseña desde la pantalla de login.\n',
     );
   } else {
     console.warn("\n[seed] Se creó el administrador inicial (credencial provista por SEED_ADMIN_INITIAL_PASSWORD).\n");

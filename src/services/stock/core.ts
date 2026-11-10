@@ -30,8 +30,14 @@ export interface MovementInput {
  * Must be executed inside a transaction.
  */
 export async function applyStockMovement(tx: Tx, input: MovementInput) {
-  const locked = await tx.execute<{ id: number; stock: number; nombre: string; deleted_at: string | null }>(
-    sql`select id, stock, nombre, deleted_at from products where id = ${input.productoId} for update`,
+  const locked = await tx.execute<{
+    id: number;
+    stock: number;
+    stock_reservado: number;
+    nombre: string;
+    deleted_at: string | null;
+  }>(
+    sql`select id, stock, stock_reservado, nombre, deleted_at from products where id = ${input.productoId} for update`,
   );
   const p = locked.rows[0];
   if (!p) throw new ValidationError("El producto no existe.");
@@ -40,6 +46,7 @@ export async function applyStockMovement(tx: Tx, input: MovementInput) {
   if (p.deleted_at && input.tipo !== "entrada")
     throw new ValidationError(`El producto "${p.nombre}" fue eliminado: solo se permiten reingresos (entradas).`);
   const anterior = Number(p.stock);
+  const reservado = Number(p.stock_reservado);
   let nuevo: number;
   let cantidad: number;
 
@@ -51,11 +58,13 @@ export async function applyStockMovement(tx: Tx, input: MovementInput) {
     if (input.cantidad <= 0) throw new ValidationError("La cantidad debe ser mayor a 0.");
     cantidad = input.cantidad;
     nuevo = anterior - cantidad;
-    if (nuevo < 0)
-      throw new ValidationError(`Stock insuficiente para "${p.nombre}": disponible ${anterior}, solicitado ${cantidad}.`);
+    if (nuevo < reservado)
+      throw new ValidationError(`Stock disponible insuficiente para "${p.nombre}": disponible ${anterior - reservado}, solicitado ${cantidad}.`);
   } else {
     if (input.cantidad < 0) throw new ValidationError("El stock ajustado no puede ser negativo.");
     nuevo = input.cantidad;
+    if (nuevo < reservado)
+      throw new ValidationError(`No se puede ajustar el stock de "${p.nombre}" por debajo de las ${reservado} unidades reservadas.`);
     cantidad = Math.abs(nuevo - anterior);
     if (nuevo === anterior) throw new ValidationError("El ajuste no modifica el stock actual.");
   }

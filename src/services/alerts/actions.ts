@@ -15,27 +15,31 @@ export async function listAlerts(): Promise<ActionResult<AlertDTO[]>> {
       nombre: string;
       sku: string;
       categoria: string | null;
-      stock: number;
+      stock_disponible: number;
       stock_minimo: number;
       imagen: string | null;
       read_tipo: string | null;
     }>(sql`
-      select p.id, p.nombre, p.sku, c.nombre as categoria, p.stock, p.stock_minimo, p.imagen, ar.tipo as read_tipo
+      select p.id, p.nombre, p.sku, c.nombre as categoria,
+        p.stock - p.stock_reservado as stock_disponible,
+        p.stock_minimo, p.imagen, ar.tipo as read_tipo
       from products p
       left join categories c on c.id = p.categoria_id
       left join alert_reads ar on ar.producto_id = p.id and ar.user_id = ${me.id}
-      where p.deleted_at is null and p.activo = true and (p.stock <= 0 or p.stock <= p.stock_minimo)
-      order by p.stock asc, p.nombre asc`);
+      where p.deleted_at is null and p.activo = true
+        and (p.stock - p.stock_reservado <= 0 or p.stock - p.stock_reservado <= p.stock_minimo)
+      order by stock_disponible asc, p.nombre asc`);
     return {
       ok: true,
       data: res.rows.map((r) => {
-        const tipo = Number(r.stock) <= 0 ? "agotado" : "bajo";
+        const stock = Number(r.stock_disponible);
+        const tipo = stock <= 0 ? "agotado" : "bajo";
         return {
           productoId: r.id,
           nombre: r.nombre,
           sku: r.sku,
           categoriaNombre: r.categoria,
-          stock: Number(r.stock),
+          stock,
           stockMinimo: Number(r.stock_minimo),
           imagen: r.imagen,
           tipo,
@@ -55,9 +59,11 @@ export async function markAlertsSeen(productIds?: number[]): Promise<ActionResul
     const filter = productIds && productIds.length ? sql`and p.id in (${sql.join(productIds.map((i) => sql`${i}`), sql`, `)})` : sql``;
     await db.execute(sql`
       insert into alert_reads (user_id, producto_id, tipo, read_at)
-      select ${me.id}, p.id, case when p.stock <= 0 then 'agotado' else 'bajo' end, now()
+      select ${me.id}, p.id,
+        case when p.stock - p.stock_reservado <= 0 then 'agotado' else 'bajo' end, now()
       from products p
-      where p.deleted_at is null and p.activo = true and (p.stock <= 0 or p.stock <= p.stock_minimo) ${filter}
+      where p.deleted_at is null and p.activo = true
+        and (p.stock - p.stock_reservado <= 0 or p.stock - p.stock_reservado <= p.stock_minimo) ${filter}
       on conflict (user_id, producto_id) do update set tipo = excluded.tipo, read_at = now()`);
     return { ok: true, data: null };
   } catch (e) {

@@ -38,7 +38,7 @@ export function ProductsView() {
   const upd = useCallback((patch: Partial<ProductFilters>) => setF((p) => ({ ...p, ...patch, page: patch.page ?? 1 })), []);
   const onSearch = useCallback((q: string) => upd({ q }), [upd]);
 
-  const { data, loading, error, reload } = useAsync(() => listProducts(f), [JSON.stringify(f)]);
+  const { data, loading, error, reload } = useAsync(() => listProducts(f), [f]);
   const cats = useAsync(() => listCategories(), []);
   const types = useAsync(() => listProductTypes(), []);
 
@@ -111,8 +111,9 @@ export function ProductsView() {
       header: "Stock",
       render: (p) => (
         <div className="flex flex-col items-start gap-1">
-          <span className="font-semibold">{p.stock} <span className="text-xs font-normal text-slate-500">/ mín. {p.stockMinimo}</span></span>
-          <StockBadge stock={p.stock} min={p.stockMinimo} />
+          <span className="font-semibold">{p.stockDisponible} disponibles</span>
+          <span className="text-xs text-slate-500">{p.stock} físicos · {p.stockReservado} reservados · mín. {p.stockMinimo}</span>
+          <StockBadge stock={p.stockDisponible} min={p.stockMinimo} />
         </div>
       ),
     },
@@ -126,7 +127,7 @@ export function ProductsView() {
     <div>
       <PageHeader
         title="Productos"
-        description="Catálogo, precios y stock de la distribuidora."
+        description="Catálogo, precios y stock."
         actions={
           <>
             {canMove && <Button variant="secondary" icon={<ArrowLeftRight className="h-4 w-4" />} onClick={() => setMoving({ id: 0 } as ProductDTO)}>Movimiento</Button>}

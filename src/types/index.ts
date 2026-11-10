@@ -67,6 +67,8 @@ export interface ProductDTO {
   precioCompra: number;
   precioVenta: number;
   stock: number;
+  stockReservado: number;
+  stockDisponible: number;
   stockMinimo: number;
   imagen: string | null;
   activo: boolean;
@@ -97,6 +99,7 @@ export interface CustomerDTO {
   empresa: string;
   telefono: string;
   email: string;
+  descuentoPorcentaje: number;
   direccion: string;
   ciudad: string;
   departamento: string;
@@ -122,16 +125,29 @@ export interface ShipmentDTO {
   clienteEmpresa: string;
   estado: ShipmentState;
   total: number;
+  subtotal: number;
+  descuentoPorcentaje: number;
+  descuentoImporte: number;
   telefono: string;
   direccion: string;
   ciudad: string;
   observaciones: string;
   stockDescontado: boolean;
+  stockReservado: boolean;
   createdAt: string;
   fechaEnvio: string | null;
   fechaEntrega: string | null;
   itemCount: number;
   items?: ShipmentItemDTO[];
+}
+
+export interface ReceiptBusinessInfo {
+  nombre: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  rut: string | null;
+  logoUrl: string | null;
+  politicaDevolucion: string | null;
 }
 
 export interface AlertDTO {

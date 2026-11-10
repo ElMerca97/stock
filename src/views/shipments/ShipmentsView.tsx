@@ -25,7 +25,7 @@ export function ShipmentsView() {
   const [f, setF] = useState<ShipmentFilters>({ ...initial, q: params.get("q") ?? "", estado: params.get("estado") ?? "" });
   const upd = useCallback((patch: Partial<ShipmentFilters>) => setF((p) => ({ ...p, ...patch, page: patch.page ?? 1 })), []);
   const onSearch = useCallback((q: string) => upd({ q }), [upd]);
-  const { data, loading, error, reload } = useAsync(() => listShipments(f), [JSON.stringify(f)]);
+  const { data, loading, error, reload } = useAsync(() => listShipments(f), [f]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ShipmentDTO | null>(null);
