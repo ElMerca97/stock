@@ -15,6 +15,7 @@ export function useAsync<T>(fn: () => Promise<ActionResult<T>>, deps: unknown[])
   const reqId = useRef(0);
   const fnRef = useRef(fn);
   const depsRef = useRef(deps);
+  const latestVersion = useRef(0);
 
   // Keep fnRef current when fn changes.
   useEffect(() => {
@@ -23,11 +24,12 @@ export function useAsync<T>(fn: () => Promise<ActionResult<T>>, deps: unknown[])
 
   const run = useCallback(async () => {
     const id = ++reqId.current;
+    const version = latestVersion.current;
     setLoading(true);
     setError(null);
     try {
       const r = await fnRef.current();
-      if (id !== reqId.current) return;
+      if (version !== latestVersion.current) return;
       if (r.ok) {
         setData(r.data);
         setError(null);
@@ -36,14 +38,14 @@ export function useAsync<T>(fn: () => Promise<ActionResult<T>>, deps: unknown[])
         setData(undefined);
       }
     } catch {
-      if (id === reqId.current) {
+      if (version === latestVersion.current) {
         setError("No se pudo conectar con el servidor.");
         setData(undefined);
       }
     } finally {
-      if (id === reqId.current) setLoading(false);
+      if (version === latestVersion.current) setLoading(false);
     }
-  }, [fn]);
+  }, [fn, latestVersion]);
 
   // Re-run whenever deps change.
   useEffect(() => {
