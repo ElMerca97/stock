@@ -39,3 +39,25 @@ typecheck.out
 .env.development.local
 .env.test.local
 .env.production.local
+
+# === Nuevas exclusiones ===
+# Backups locales
+*.bak
+*.bak2
+*.orig
+
+# Copia duplicada del repositorio
+/repo_github/
+
+# Archivo temporal
+/tatus
+
+# Archivos temporales de verificación
+lint.out
+typecheck.out
+
+# Archivos locales de configuración
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
