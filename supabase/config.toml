@@ -1,0 +1,8 @@
+project_id = "stockpro-ferreteria"
+
+[functions.admin-create-employee]
+# The function validates the caller with auth.getUser(token) itself.
+verify_jwt = false
+
+[functions.admin-delete-employee]
+verify_jwt = false
